@@ -42,19 +42,25 @@ var groups struct {
 	sync.Mutex
 }
 
-// Label label a connection
-func Label(c *connection, label string) {
-	c.m.Lock()
-	c.label[label] = struct{}{}
-	c.m.Unlock()
+func label(c *connection, label string) {
+	if label == "" {
+		return
+	}
+	afterDo := func() {
+		c.m.Lock()
+		defer c.m.Unlock()
+		c.label[label] = struct{}{}
+	}
 	if val, ok := groups.Load(label); ok {
 		val.(*group).add(c)
+		afterDo()
 		return
 	}
 	groups.Lock()
 	defer groups.Unlock()
 	if val, ok := groups.Load(label); ok { // double check
 		val.(*group).add(c)
+		afterDo()
 		return
 	}
 	group := newGroup()
@@ -63,17 +69,29 @@ func Label(c *connection, label string) {
 	return
 }
 
-// Message send a message to label clients
-func Message(label string, content []byte) {
+func rmlabel(c *connection, label string) {
+	if _, ok := c.label[label]; ok {
+		if val, ok := groups.Load(label); ok {
+			val.(*group).remove(c)
+			c.m.Lock()
+			defer c.m.Unlock()
+			delete(c.label, label)
+			return
+		}
+		log.Println("[Error]inconsistent error")
+	}
+}
+
+func broadcast(label string, content []byte) {
 	if val, ok := groups.Load(label); ok {
 		b := &bytes.Buffer{}
 		b.WriteString(fmt.Sprintf("%d,", len(content)))
 		b.Write(content)
 		val.(*group).do(func(c *connection) {
-			if atomic.LoadInt64(&c.status) != 0 {
+			if atomic.LoadInt64(&c.status) == 0 {
 				n, err := c.Write(b.Bytes())
 				if err != nil {
-					log.Printf("[Error]io writing error: %v %v %v", label, n, err)
+					log.Printf("[Error]io writing error: %v %v %v\n", label, n, err)
 				}
 			}
 		})

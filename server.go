@@ -36,7 +36,7 @@ func (s *Server) Serve(l net.Listener) error {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			log.Printf("accept error: %v", err)
+			log.Printf("accept error: %v\n", err)
 			continue
 		}
 		go s.handler.handle(newConnection(conn))
