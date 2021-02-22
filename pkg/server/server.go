@@ -1,7 +1,11 @@
-package lim
+package server
 
 import (
 	"net"
+
+	"github.com/RedAFD/lim/pkg/connection"
+	"github.com/RedAFD/lim/pkg/handler"
+	"github.com/RedAFD/lim/pkg/logger"
 )
 
 // Server lim server
@@ -32,6 +36,6 @@ func (s *Server) Serve(l net.Listener) error {
 			logger.Error("accept error: %v", err)
 			continue
 		}
-		go handler.Handle(newConnection(conn))
+		go handler.Handle(connection.NewConnection(conn))
 	}
 }

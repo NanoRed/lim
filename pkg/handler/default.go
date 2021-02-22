@@ -1,4 +1,4 @@
-package lim
+package handler
 
 import (
 	"bufio"
@@ -11,24 +11,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/RedAFD/lim/pkg/connection"
+	"github.com/RedAFD/lim/pkg/logger"
 )
-
-// Handler handler interface
-// you can implement your own handler
-type Handler interface {
-	Handle(*Connection)
-}
-
-var handler Handler
-
-func init() {
-	handler = NewDefaultHandler(time.Second*10, time.Second*3)
-}
-
-// RegisterHandler register a handler
-func RegisterHandler(h Handler) {
-	handler = h
-}
 
 // message type
 const (
@@ -80,7 +66,7 @@ func NewDefaultHandler(expSec time.Duration, respTimeout time.Duration) *Default
 }
 
 // Handle handle connection
-func (h *DefaultHandler) Handle(c *Connection) {
+func (h *DefaultHandler) Handle(c *connection.Connection) {
 	defer c.Close()
 	reader := bufio.NewReader(c)
 	acquireSequence := h.lineup(c)
@@ -109,7 +95,7 @@ func (h *DefaultHandler) Handle(c *Connection) {
 	}
 }
 
-func (h *DefaultHandler) lineup(c *Connection) func() <-chan struct{} {
+func (h *DefaultHandler) lineup(c *connection.Connection) func() <-chan struct{} {
 	queue := &struct {
 		l *list.List
 		m sync.Mutex
@@ -151,7 +137,7 @@ func (h *DefaultHandler) lineup(c *Connection) func() <-chan struct{} {
 	}
 }
 
-func (h *DefaultHandler) parse(orderLock <-chan struct{}, c *Connection, message []byte) {
+func (h *DefaultHandler) parse(orderLock <-chan struct{}, c *connection.Connection, message []byte) {
 	buffer := bytes.NewBuffer(message)
 	seg1, err := buffer.ReadString(',')
 	if err != nil {
@@ -177,7 +163,7 @@ func (h *DefaultHandler) parse(orderLock <-chan struct{}, c *Connection, message
 			h.respFailure(orderLock, c, ErrorInvalidLabel)
 			return
 		}
-		Label(c, string(l))
+		connection.Label(c, string(l))
 	case TypeRemoveLabel:
 		l, err := ioutil.ReadAll(buffer)
 		if err != nil {
@@ -189,7 +175,7 @@ func (h *DefaultHandler) parse(orderLock <-chan struct{}, c *Connection, message
 			h.respFailure(orderLock, c, ErrorInvalidLabel)
 			return
 		}
-		RemoveLabel(c, string(l))
+		connection.RemoveLabel(c, string(l))
 	case TypeBroadcast:
 		seg2, err := buffer.ReadString(',')
 		if err != nil {
@@ -219,14 +205,14 @@ func (h *DefaultHandler) parse(orderLock <-chan struct{}, c *Connection, message
 }
 
 func (h *DefaultHandler) broadcast(label string, message []byte) {
-	connSet, err := FindConnSet(label)
+	connSet, err := connection.FindConnSet(label)
 	if err == nil {
 		b := &bytes.Buffer{}
 		messageType := []byte(fmt.Sprintf("%d,", TypeBroadcast))
 		b.WriteString(fmt.Sprintf("%d,", len(messageType)+len(message)))
 		b.Write(messageType)
 		b.Write(message)
-		connSet.RangeDo(func(c *Connection) {
+		connSet.RangeDo(func(c *connection.Connection) {
 			n, err := c.SafetyWrite(h.expireSecond, b.Bytes())
 			if err != nil {
 				logger.Error("broadcast io writing error: %v %v %v", label, n, err)
@@ -236,7 +222,7 @@ func (h *DefaultHandler) broadcast(label string, message []byte) {
 	}
 }
 
-func (h *DefaultHandler) respFailure(orderLock <-chan struct{}, c *Connection, errcode int) {
+func (h *DefaultHandler) respFailure(orderLock <-chan struct{}, c *connection.Connection, errcode int) {
 	b := &bytes.Buffer{}
 	content := []byte(fmt.Sprintf("%d,%d,%d", TypeResponse, RespFailure, errcode))
 	b.WriteString(fmt.Sprintf("%d,", len(content)))
@@ -252,7 +238,7 @@ func (h *DefaultHandler) respFailure(orderLock <-chan struct{}, c *Connection, e
 	}
 }
 
-func (h *DefaultHandler) respSuccess(orderLock <-chan struct{}, c *Connection) {
+func (h *DefaultHandler) respSuccess(orderLock <-chan struct{}, c *connection.Connection) {
 	b := &bytes.Buffer{}
 	content := []byte(fmt.Sprintf("%d,%d", TypeResponse, RespSuccess))
 	b.WriteString(fmt.Sprintf("%d,", len(content)))
@@ -268,7 +254,7 @@ func (h *DefaultHandler) respSuccess(orderLock <-chan struct{}, c *Connection) {
 	}
 }
 
-func (h *DefaultHandler) respTimeout(c *Connection) {
+func (h *DefaultHandler) respTimeout(c *connection.Connection) {
 	b := &bytes.Buffer{}
 	content := []byte(fmt.Sprintf("%d,%d", TypeResponse, RespTimeout))
 	b.WriteString(fmt.Sprintf("%d,", len(content)))
