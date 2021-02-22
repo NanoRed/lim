@@ -1,24 +1,17 @@
 package lim
 
 import (
-	"log"
 	"net"
 )
 
 // Server lim server
 type Server struct {
-	addr    string
-	handler handler
+	addr string
 }
 
 // NewServer create a new server
 func NewServer(addr string) *Server {
-	return &Server{addr: addr, handler: &defaultHandler{}}
-}
-
-// RegisterHandler register a handler
-func (s *Server) RegisterHandler(h handler) {
-	s.handler = h
+	return &Server{addr: addr}
 }
 
 // ListenAndServe create a listener and start to serve
@@ -36,9 +29,9 @@ func (s *Server) Serve(l net.Listener) error {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			log.Printf("accept error: %v\n", err)
+			logger.Error("accept error: %v", err)
 			continue
 		}
-		go s.handler.handle(newConnection(conn))
+		go handler.Handle(newConnection(conn))
 	}
 }
