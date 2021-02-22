@@ -2,6 +2,7 @@ package server
 
 import (
 	"net"
+	"time"
 
 	"github.com/RedAFD/lim/pkg/connection"
 	"github.com/RedAFD/lim/pkg/handler"
@@ -10,12 +11,18 @@ import (
 
 // Server lim server
 type Server struct {
-	addr string
+	addr    string
+	handler handler.Handler
 }
 
 // NewServer create a new server
 func NewServer(addr string) *Server {
-	return &Server{addr: addr}
+	return &Server{addr: addr, handler: handler.NewSrvHandler(time.Second*10, time.Second*3)}
+}
+
+// RegisterHandler register a handler to the server
+func (s *Server) RegisterHandler(h handler.Handler) {
+	s.handler = h
 }
 
 // ListenAndServe create a listener and start to serve
@@ -36,6 +43,6 @@ func (s *Server) Serve(l net.Listener) error {
 			logger.Error("accept error: %v", err)
 			continue
 		}
-		go handler.Handle(connection.NewConnection(conn))
+		go s.handler.Handle(connection.NewConnsrv(conn))
 	}
 }

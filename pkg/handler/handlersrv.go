@@ -51,27 +51,31 @@ const (
 	ErrorInvalidContent
 )
 
-// DefaultHandler default handler
-type DefaultHandler struct {
+// SrvHandler default handler
+type SrvHandler struct {
 	expireSecond    time.Duration
 	responseTimeout time.Duration
 }
 
-// NewDefaultHandler create a new default handler
-func NewDefaultHandler(expSec time.Duration, respTimeout time.Duration) *DefaultHandler {
-	return &DefaultHandler{
+// NewSrvHandler create a new default handler
+func NewSrvHandler(expSec time.Duration, respTimeout time.Duration) *SrvHandler {
+	return &SrvHandler{
 		expireSecond:    expSec,
 		responseTimeout: respTimeout,
 	}
 }
 
 // Handle handle connection
-func (h *DefaultHandler) Handle(c *connection.Connection) {
+func (h *SrvHandler) Handle(c connection.Conn) {
 	defer c.Close()
 	reader := bufio.NewReader(c)
 	acquireSequence := h.lineup(c)
 	for {
-		c.SetReadDeadline(time.Now().Add(h.expireSecond))
+		err := c.SetReadDeadline(time.Now().Add(h.expireSecond))
+		if err != nil {
+			logger.Error("set read deadline error: %v", err)
+			return
+		}
 		sizestr, err := reader.ReadString(',')
 		if err != nil {
 			logger.Error("get message size error: %v", err)
@@ -95,7 +99,7 @@ func (h *DefaultHandler) Handle(c *connection.Connection) {
 	}
 }
 
-func (h *DefaultHandler) lineup(c *connection.Connection) func() <-chan struct{} {
+func (h *SrvHandler) lineup(c connection.Conn) func() <-chan struct{} {
 	queue := &struct {
 		l *list.List
 		m sync.Mutex
@@ -137,7 +141,7 @@ func (h *DefaultHandler) lineup(c *connection.Connection) func() <-chan struct{}
 	}
 }
 
-func (h *DefaultHandler) parse(orderLock <-chan struct{}, c *connection.Connection, message []byte) {
+func (h *SrvHandler) parse(orderLock <-chan struct{}, c connection.Conn, message []byte) {
 	buffer := bytes.NewBuffer(message)
 	seg1, err := buffer.ReadString(',')
 	if err != nil {
@@ -204,7 +208,7 @@ func (h *DefaultHandler) parse(orderLock <-chan struct{}, c *connection.Connecti
 	h.respSuccess(orderLock, c)
 }
 
-func (h *DefaultHandler) broadcast(label string, message []byte) {
+func (h *SrvHandler) broadcast(label string, message []byte) {
 	connSet, err := connection.FindConnSet(label)
 	if err == nil {
 		b := &bytes.Buffer{}
@@ -212,7 +216,7 @@ func (h *DefaultHandler) broadcast(label string, message []byte) {
 		b.WriteString(fmt.Sprintf("%d,", len(messageType)+len(message)))
 		b.Write(messageType)
 		b.Write(message)
-		connSet.RangeDo(func(c *connection.Connection) {
+		connSet.RangeDo(func(c connection.Conn) {
 			n, err := c.SafetyWrite(h.expireSecond, b.Bytes())
 			if err != nil {
 				logger.Error("broadcast io writing error: %v %v %v", label, n, err)
@@ -222,7 +226,7 @@ func (h *DefaultHandler) broadcast(label string, message []byte) {
 	}
 }
 
-func (h *DefaultHandler) respFailure(orderLock <-chan struct{}, c *connection.Connection, errcode int) {
+func (h *SrvHandler) respFailure(orderLock <-chan struct{}, c connection.Conn, errcode int) {
 	b := &bytes.Buffer{}
 	content := []byte(fmt.Sprintf("%d,%d,%d", TypeResponse, RespFailure, errcode))
 	b.WriteString(fmt.Sprintf("%d,", len(content)))
@@ -238,7 +242,7 @@ func (h *DefaultHandler) respFailure(orderLock <-chan struct{}, c *connection.Co
 	}
 }
 
-func (h *DefaultHandler) respSuccess(orderLock <-chan struct{}, c *connection.Connection) {
+func (h *SrvHandler) respSuccess(orderLock <-chan struct{}, c connection.Conn) {
 	b := &bytes.Buffer{}
 	content := []byte(fmt.Sprintf("%d,%d", TypeResponse, RespSuccess))
 	b.WriteString(fmt.Sprintf("%d,", len(content)))
@@ -254,7 +258,7 @@ func (h *DefaultHandler) respSuccess(orderLock <-chan struct{}, c *connection.Co
 	}
 }
 
-func (h *DefaultHandler) respTimeout(c *connection.Connection) {
+func (h *SrvHandler) respTimeout(c connection.Conn) {
 	b := &bytes.Buffer{}
 	content := []byte(fmt.Sprintf("%d,%d", TypeResponse, RespTimeout))
 	b.WriteString(fmt.Sprintf("%d,", len(content)))

@@ -19,7 +19,7 @@ func main() {
 - ☑️ connections label manager
 - ☑️ simple customizable protocol(handler)
 - ☑️ simple customizable logger
-- 🟦 client samples
+- 🟦 client
 - 🟦 websocket support
 - 🟦 cluster support
 - 🟦 docs

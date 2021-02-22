@@ -11,15 +11,11 @@ var connDict struct {
 }
 
 // Label label a connection
-func Label(c *Connection, label string) {
+func Label(c Conn, label string) {
 	if label == "" {
 		return
 	}
-	defer func() {
-		c.lm.Lock()
-		defer c.lm.Unlock()
-		c.label[label] = struct{}{}
-	}()
+	defer c.Label(label)
 	if val, ok := connDict.Load(label); ok {
 		val.(*ConnSet).add(c)
 		return
@@ -37,12 +33,8 @@ func Label(c *Connection, label string) {
 }
 
 // RemoveLabel remove a label from a connection
-func RemoveLabel(c *Connection, label string) {
-	defer func() {
-		c.lm.Lock()
-		defer c.lm.Unlock()
-		delete(c.label, label)
-	}()
+func RemoveLabel(c Conn, label string) {
+	defer c.Dislabel(label)
 	if val, ok := connDict.Load(label); ok {
 		connSet := val.(*ConnSet)
 		connSet.remove(c)
@@ -53,10 +45,8 @@ func RemoveLabel(c *Connection, label string) {
 }
 
 // ClearLabel remove all the label from a connection
-func ClearLabel(c *Connection) {
-	c.lm.Lock()
-	defer c.lm.Unlock()
-	for label := range c.label {
+func ClearLabel(c Conn) {
+	for _, label := range c.ListLabel() {
 		if val, ok := connDict.Load(label); ok {
 			connSet := val.(*ConnSet)
 			connSet.remove(c)
@@ -64,7 +54,7 @@ func ClearLabel(c *Connection) {
 				connDict.Delete(label)
 			}
 		}
-		delete(c.label, label)
+		c.Dislabel(label)
 	}
 }
 
@@ -73,5 +63,5 @@ func FindConnSet(label string) (*ConnSet, error) {
 	if val, ok := connDict.Load(label); ok {
 		return val.(*ConnSet), nil
 	}
-	return nil, errors.New("can't find corresponding connections set")
+	return nil, errors.New("can't find corresponding connset")
 }
