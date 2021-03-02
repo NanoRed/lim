@@ -34,12 +34,12 @@ func main() {
     handler.Dislabel("team")
 
     go func() {
-	for {
+        for {
             // open a goroutine to consume task queues from the service side
-	    if label, message, err := handler.ConsumeTasks(); err == nil {
+            if label, message, err := handler.ConsumeTasks(); err == nil {
                 logger.Info("%s %s %v", label, message, err)
-	    }
-	}
+            }
+        }
     }()
     time.Sleep(time.Second)
     handler.Broadcast("global", []byte("hello world"))
