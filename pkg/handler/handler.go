@@ -97,7 +97,6 @@ func (h *DefaultSrvHandler) Handle(c net.Conn) {
 			return
 		}
 		sizestr, err := reader.ReadString(',')
-		logger.Info("DEBUG1: %v %v", sizestr, err)
 		if err != nil {
 			logger.Error("get message size error: %v", err)
 			return
@@ -112,7 +111,6 @@ func (h *DefaultSrvHandler) Handle(c net.Conn) {
 		// TODO(): size should have a limit value
 		message := make([]byte, size)
 		_, err = io.ReadFull(reader, message)
-		logger.Info("DEBUG2: %v %v", string(message), err)
 		if err != nil {
 			logger.Error("unexpected size packet: %v", err)
 			return
