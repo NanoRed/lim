@@ -35,7 +35,7 @@ func main() {
 
     go func() {
 		for {
-            // open a goroutine to consume task queues from the service side
+            		// open a goroutine to consume task queues from the service side
 			if label, message, err := handler.ConsumeTasks(); err == nil {
                 logger.Info("%s %s %v", label, message, err)
 			}
