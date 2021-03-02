@@ -12,16 +12,16 @@ import (
 // Server lim server
 type Server struct {
 	addr    string
-	handler handler.Handler
+	handler handler.SrvHandler
 }
 
-// NewServer create a new server
+// NewServer create a new lim server
 func NewServer(addr string) *Server {
-	return &Server{addr: addr, handler: handler.NewSrvHandler(time.Second*10, time.Second*3)}
+	return &Server{addr: addr, handler: handler.NewDefaultSrvHandler(time.Second*10, time.Second*3)}
 }
 
 // RegisterHandler register a handler to the server
-func (s *Server) RegisterHandler(h handler.Handler) {
+func (s *Server) RegisterHandler(h handler.SrvHandler) {
 	s.handler = h
 }
 
@@ -43,6 +43,7 @@ func (s *Server) Serve(l net.Listener) error {
 			logger.Error("accept error: %v", err)
 			continue
 		}
-		go s.handler.Handle(connection.NewConnsrv(conn))
+		connection.Register(conn)
+		go s.handler.Handle(conn)
 	}
 }
