@@ -20,7 +20,8 @@ func main() {
 - ☑️ simple customizable protocol(handler)
 - ☑️ simple customizable logger
 - ☑️ client
-- 🟦 cmd main application
+- ☑️ heartbeat
+- ☑️ cmd main application
 - 🟦 websocket support
 - 🟦 authentication
 - 🟦 cluster support

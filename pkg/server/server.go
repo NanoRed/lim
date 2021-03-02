@@ -37,6 +37,7 @@ func (s *Server) ListenAndServe() error {
 // Serve listen and accept connection
 func (s *Server) Serve(l net.Listener) error {
 	defer l.Close()
+	logger.Info("server now is in progress :)")
 	for {
 		conn, err := l.Accept()
 		if err != nil {

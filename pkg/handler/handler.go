@@ -97,6 +97,7 @@ func (h *DefaultSrvHandler) Handle(c net.Conn) {
 			return
 		}
 		sizestr, err := reader.ReadString(',')
+		logger.Info("DEBUG1: %v %v", sizestr, err)
 		if err != nil {
 			logger.Error("get message size error: %v", err)
 			return
@@ -111,6 +112,7 @@ func (h *DefaultSrvHandler) Handle(c net.Conn) {
 		// TODO(): size should have a limit value
 		message := make([]byte, size)
 		_, err = io.ReadFull(reader, message)
+		logger.Info("DEBUG2: %v %v", string(message), err)
 		if err != nil {
 			logger.Error("unexpected size packet: %v", err)
 			return
@@ -323,7 +325,11 @@ func (h *DefaultCliHandler) nonBlockingQueue() (input chan<- []byte, output <-ch
 	in := make(chan []byte)
 	out := make(chan []byte)
 	go func() {
-		for message := range <-in {
+		for {
+			message, ok := <-in
+			if !ok {
+				break
+			}
 			q.m.Lock()
 			q.l.PushBack(message)
 			q.m.Unlock()
@@ -496,10 +502,7 @@ func (h *DefaultCliHandler) ConsumeTasks() (label string, message []byte, err er
 
 // Label label connection on the service side
 func (h *DefaultCliHandler) Label(label string) error {
-	b := &bytes.Buffer{}
-	content := []byte(fmt.Sprintf("%d,%s", TypeLabel, label))
-	b.WriteString(fmt.Sprintf("%d,", len(content)))
-	b.Write(content)
+	content := fmt.Sprintf("%d,%s", TypeLabel, label)
 
 	exchange := make(chan []byte)
 	select {
@@ -507,7 +510,7 @@ func (h *DefaultCliHandler) Label(label string) error {
 	case <-time.After(h.ioLimitedSec):
 		return fmt.Errorf("%d", RespTimeout)
 	}
-	exchange <- b.Bytes()
+	exchange <- []byte(content)
 	response, ok := <-exchange
 	if !ok {
 		return fmt.Errorf("%d", RespTimeout)
@@ -519,10 +522,7 @@ func (h *DefaultCliHandler) Label(label string) error {
 
 // Dislabel dislabel connection on the service side
 func (h *DefaultCliHandler) Dislabel(label string) error {
-	b := &bytes.Buffer{}
-	content := []byte(fmt.Sprintf("%d,%s", TypeDislabel, label))
-	b.WriteString(fmt.Sprintf("%d,", len(content)))
-	b.Write(content)
+	content := fmt.Sprintf("%d,%s", TypeDislabel, label)
 
 	exchange := make(chan []byte)
 	select {
@@ -530,7 +530,7 @@ func (h *DefaultCliHandler) Dislabel(label string) error {
 	case <-time.After(h.ioLimitedSec):
 		return fmt.Errorf("%d", RespTimeout)
 	}
-	exchange <- b.Bytes()
+	exchange <- []byte(content)
 	response, ok := <-exchange
 	if !ok {
 		return fmt.Errorf("%d", RespTimeout)
@@ -543,11 +543,7 @@ func (h *DefaultCliHandler) Dislabel(label string) error {
 // Broadcast broadcast a message to the connections
 // that on the server side of the corresponding label
 func (h *DefaultCliHandler) Broadcast(label string, message []byte) error {
-	b := &bytes.Buffer{}
-	head := []byte(fmt.Sprintf("%d,%s,", TypeBroadcast, label))
-	b.WriteString(fmt.Sprintf("%d,", len(head)+len(message)))
-	b.Write(head)
-	b.Write(message)
+	content := fmt.Sprintf("%d,%s,%s", TypeBroadcast, label, message)
 
 	exchange := make(chan []byte)
 	select {
@@ -555,7 +551,7 @@ func (h *DefaultCliHandler) Broadcast(label string, message []byte) error {
 	case <-time.After(h.ioLimitedSec):
 		return fmt.Errorf("%d", RespTimeout)
 	}
-	exchange <- b.Bytes()
+	exchange <- []byte(content)
 	response, ok := <-exchange
 	if !ok {
 		return fmt.Errorf("%d", RespTimeout)
@@ -566,13 +562,8 @@ func (h *DefaultCliHandler) Broadcast(label string, message []byte) error {
 }
 
 func (h *DefaultCliHandler) parseResponse(message []byte) (err error) {
-	buffer := bytes.NewBuffer(message)
-	result, err := buffer.ReadString(',')
-	if err != nil {
-		logger.Error("get result error: %v", err)
-		return
-	}
-	t, err := strconv.Atoi(strings.TrimRight(result, ","))
+	s := strings.SplitN(string(message), ",", 2)
+	t, err := strconv.Atoi(s[0])
 	if err != nil {
 		logger.Error("illegal result: %v", err)
 		return
@@ -581,13 +572,11 @@ func (h *DefaultCliHandler) parseResponse(message []byte) (err error) {
 	case RespSuccess:
 		return
 	case RespFailure:
-		var errcode string
-		errcode, err = buffer.ReadString(',')
-		if err != nil {
-			logger.Error("failed to get error code: %v", err)
+		if len(s) < 2 {
+			err = fmt.Errorf("%d", ErrorUnknown)
 			return
 		}
-		err = errors.New(errcode)
+		err = errors.New(s[1])
 		return
 	}
 	return errors.New("unknown result")
