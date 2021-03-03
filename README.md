@@ -56,7 +56,7 @@ func main() {
 - ☑️ client
 - ☑️ heartbeat
 - ☑️ cmd main application
-- 🟦 Optimize the protocol package volume
+- 🟦 optimize the protocol package volume
 - 🟦 websocket support
 - 🟦 authentication
 - 🟦 cluster support
