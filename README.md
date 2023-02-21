@@ -6,7 +6,7 @@ For more information, please review the cmd directory
 // server
 package main
 
-import "github.com/RedAFD/lim/pkg/server"
+import "github.com/NanoRed/lim/pkg/server"
 
 func main() {
     s := server.NewServer("127.0.0.1:7714")
@@ -19,7 +19,7 @@ func main() {
 // client
 package main
 
-import "github.com/RedAFD/lim/pkg/client"
+import "github.com/NanoRed/lim/pkg/client"
 
 func main() {
     c := client.NewClient("127.0.0.1:7714")

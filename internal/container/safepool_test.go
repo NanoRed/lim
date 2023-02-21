@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RedAFD/lim/internal/container"
+	"github.com/NanoRed/lim/internal/container"
 )
 
 func BenchmarkSafePool(b *testing.B) {

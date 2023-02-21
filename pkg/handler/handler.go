@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/RedAFD/lim/pkg/connection"
-	"github.com/RedAFD/lim/pkg/logger"
+	"github.com/NanoRed/lim/pkg/connection"
+	"github.com/NanoRed/lim/pkg/logger"
 )
 
 // SrvHandler server handler interface

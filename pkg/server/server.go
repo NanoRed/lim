@@ -4,9 +4,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/RedAFD/lim/pkg/connection"
-	"github.com/RedAFD/lim/pkg/handler"
-	"github.com/RedAFD/lim/pkg/logger"
+	"github.com/NanoRed/lim/pkg/connection"
+	"github.com/NanoRed/lim/pkg/handler"
+	"github.com/NanoRed/lim/pkg/logger"
 )
 
 // Server lim server

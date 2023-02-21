@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/RedAFD/lim/pkg/client"
-	"github.com/RedAFD/lim/pkg/handler"
-	"github.com/RedAFD/lim/pkg/logger"
+	"github.com/NanoRed/lim/pkg/client"
+	"github.com/NanoRed/lim/pkg/handler"
+	"github.com/NanoRed/lim/pkg/logger"
 	"github.com/mum4k/termdash"
 	"github.com/mum4k/termdash/cell"
 	"github.com/mum4k/termdash/container"
