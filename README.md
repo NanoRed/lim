@@ -6,13 +6,11 @@ For more information, please review the cmd directory
 // server
 package main
 
-import "github.com/NanoRed/lim/pkg/server"
+import "github.com/NanoRed/lim/internal"
 
 func main() {
-    s := server.NewServer("127.0.0.1:7714")
-	if err := s.ListenAndServe(); err != nil {
-        logger.Fatal("failed to serve: %v", err)
-    }
+    server := internal.NewServer("127.0.0.1:7714", internal.NewDefaultFrameProcessor())
+	server.ListenAndServe()
 }
 ```
 ```golang
@@ -22,27 +20,21 @@ package main
 import "github.com/NanoRed/lim/pkg/client"
 
 func main() {
-    c := client.NewClient("127.0.0.1:7714")
-    h, err := c.DialForHandler(nil)
-    if err != nil {
-        logger.Fatal("failed to dial %v", err)
-    }
+    client := internal.NewClient("127.0.0.1:7714", internal.NewDefaultFrameProcessor())
+	client.Connect()
 
-    // actions
-    handler := h.(*handler.DefaultCliHandler)
-    handler.Label("global")
-    handler.Dislabel("team")
+	client.Label("global") // label this connection on the server
+    // client.Dislabel("test")
 
     go func() {
+        // open a goroutine to consume messages from the service side
         for {
-            // open a goroutine to consume task queues from the service side
-            if label, message, err := handler.ConsumeTasks(); err == nil {
-                logger.Info("%s %s %v", label, message, err)
-            }
-        }
+            label, message := client.Receive()
+            logger.Info("%s %s", label, message)
+		}
     }()
-    time.Sleep(time.Second)
-    handler.Broadcast("global", []byte("hello world"))
+    client.
+    handler.Multicast("global", []byte("hello world"))
 
     for{
     }
@@ -50,15 +42,15 @@ func main() {
 ```
 ### Development Trends
 - ☑️ basic available tcp server
-- ☑️ connections label manager
-- ☑️ simple customizable protocol(handler)
-- ☑️ simple customizable logger
-- ☑️ client
-- ☑️ heartbeat
-- ☑️ cmd main application
-- 🟦 optimize the protocol package volume
+- ☑️ connections manager(based on label)
+- ☑️ protocol and custom protocol interface
+- ☑️ logger and custom logger interface
+- ☑️ complex and robust client implement
+- ☑️ client connection heartbeat
+- ☑️ simple authentication
+- ☑️ backoff delay reconnection
+- 🟦 label memory
+- 🟦 better authentication
 - 🟦 websocket support
-- 🟦 authentication
 - 🟦 cluster support
-- 🟦 events interceptor
 - 🟦 docs
