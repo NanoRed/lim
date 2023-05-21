@@ -49,7 +49,7 @@ func main() {
 - ☑️ client connection heartbeat
 - ☑️ simple authentication
 - ☑️ backoff delay reconnection
-- 🟦 label memory
+- 🟦 client label memory and performance optimization
 - 🟦 better authentication
 - 🟦 websocket support
 - 🟦 cluster support
