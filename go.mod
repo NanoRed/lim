@@ -2,10 +2,7 @@ module github.com/NanoRed/lim
 
 go 1.20
 
-require (
-	github.com/lrita/cmap v0.0.0-20200818170753-e987cd3dfa73
-	github.com/mum4k/termdash v0.14.0
-)
+require github.com/mum4k/termdash v0.14.0
 
 require (
 	github.com/gdamore/encoding v1.0.0 // indirect
