@@ -21,6 +21,7 @@ type Client struct {
 	pauseTimes     int32
 	close          chan struct{}
 	frameProcessor FrameProcessor
+	labels         *sync.Map
 }
 
 func NewClient(addr string, frameProcessor FrameProcessor) *Client {
@@ -32,6 +33,7 @@ func NewClient(addr string, frameProcessor FrameProcessor) *Client {
 		pauseTimes:     0,
 		close:          make(chan struct{}, 1),
 		frameProcessor: frameProcessor,
+		labels:         &sync.Map{},
 	}
 	client.reqIn, client.reqOut = container.NewSyncQueue().Chan()
 	return client
@@ -74,6 +76,18 @@ func (c *Client) Connect(a ...any) {
 		delay = 0
 		if err = c.handshake(conn); err != nil {
 			logger.Error("handshake failed: %v", err)
+			return
+		}
+		c.labels.Range(func(key, value any) bool {
+			frame := c.frameProcessor.Make(FTLabel, key.(string), []byte{})
+			defer c.frameProcessor.Recycle(frame)
+			if err = c.requestRoughly(conn, frame); err != nil {
+				return false
+			}
+			return true
+		})
+		if err != nil {
+			logger.Error("failed to relabel: %v", err)
 			return
 		}
 		if newTimes := atomic.LoadInt32(&c.pauseTimes); times != newTimes {
@@ -148,6 +162,45 @@ func (c *Client) sendLoop(conn *conn) {
 	}
 }
 
+func (c *Client) requestRoughly(conn *conn, frame Frame) (err error) {
+	if _, err = conn.writex(frame.Encode()); err != nil {
+		return
+	}
+	timer := time.NewTimer(ResponseTimeout)
+	defer conn.SetReadDeadline(time.Time{})
+	for {
+		select {
+		case <-timer.C:
+			err = errors.New("request timed out")
+			return
+		default:
+			err = conn.SetReadDeadline(time.Now().Add(ResponseTimeout))
+			if err != nil {
+				return
+			}
+			frame, e := c.frameProcessor.Next(conn)
+			if e != nil {
+				c.frameProcessor.Recycle(frame)
+				return e
+			}
+			if frame.Type() == FTResponse {
+				if message := frame.Payload(); len(message) > 0 {
+					err = errors.New(string(message))
+				}
+				c.frameProcessor.Recycle(frame)
+				return
+			}
+			c.frameProcessor.Recycle(frame)
+		}
+	}
+}
+
+func (c *Client) handshake(conn *conn) (err error) {
+	frame := c.frameProcessor.Make(FTHandshake, "", []byte("sample_secret")) // TODO
+	defer c.frameProcessor.Recycle(frame)
+	return c.requestRoughly(conn, frame)
+}
+
 func (c *Client) request(frame Frame) (err error) {
 	c.pauseValve.Wait()
 	times := c.pauseTimes
@@ -179,47 +232,14 @@ func (c *Client) pause(times int32) {
 	}
 }
 
-func (c *Client) handshake(conn *conn) (err error) {
-	reqframe := c.frameProcessor.Make(FTHandshake, "", []byte("sample_secret")) // TODO
-	defer c.frameProcessor.Recycle(reqframe)
-	if _, err = conn.writex(reqframe.Encode()); err != nil {
-		return
-	}
-	timer := time.NewTimer(ResponseTimeout)
-	defer conn.SetReadDeadline(time.Time{})
-	for {
-		select {
-		case <-timer.C:
-			err = errors.New("handshake timed out")
-			return
-		default:
-			err = conn.SetReadDeadline(time.Now().Add(ResponseTimeout))
-			if err != nil {
-				return
-			}
-			frame, e := c.frameProcessor.Next(conn)
-			if e != nil {
-				c.frameProcessor.Recycle(frame)
-				return e
-			}
-			if frame.Type() == FTResponse {
-				if message := frame.Payload(); len(message) > 0 {
-					err = errors.New(string(message))
-				}
-				c.frameProcessor.Recycle(frame)
-				return
-			}
-			c.frameProcessor.Recycle(frame)
-		}
-	}
-}
-
 func (c *Client) Label(label string) (err error) {
+	c.labels.Store(label, nil)
 	frame := c.frameProcessor.Make(FTLabel, label, []byte{})
 	return c.request(frame)
 }
 
 func (c *Client) Dislabel(label string) (err error) {
+	c.labels.Delete(label)
 	frame := c.frameProcessor.Make(FTLabel, label, []byte{'-'})
 	return c.request(frame)
 }
