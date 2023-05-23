@@ -78,15 +78,7 @@ func (c *Client) Connect(a ...any) {
 			logger.Error("handshake failed: %v", err)
 			return
 		}
-		c.labels.Range(func(key, value any) bool {
-			frame := c.frameProcessor.Make(FTLabel, key.(string), []byte{})
-			defer c.frameProcessor.Recycle(frame)
-			if err = c.requestRoughly(conn, frame); err != nil {
-				return false
-			}
-			return true
-		})
-		if err != nil {
+		if err = c.relabel(conn); err != nil {
 			logger.Error("failed to relabel: %v", err)
 			return
 		}
@@ -199,6 +191,18 @@ func (c *Client) handshake(conn *conn) (err error) {
 	frame := c.frameProcessor.Make(FTHandshake, "", []byte("sample_secret")) // TODO
 	defer c.frameProcessor.Recycle(frame)
 	return c.requestRoughly(conn, frame)
+}
+
+func (c *Client) relabel(conn *conn) (err error) {
+	c.labels.Range(func(key, value any) bool {
+		frame := c.frameProcessor.Make(FTLabel, key.(string), []byte{})
+		defer c.frameProcessor.Recycle(frame)
+		if err = c.requestRoughly(conn, frame); err != nil {
+			return false
+		}
+		return true
+	})
+	return
 }
 
 func (c *Client) request(frame Frame) (err error) {
