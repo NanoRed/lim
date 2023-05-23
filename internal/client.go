@@ -56,6 +56,7 @@ func (c *Client) Connect(a ...any) {
 	}
 	go func() {
 		defer func() {
+			logger.Warn("reconnect in %d seconds...", delay)
 			time.Sleep(delay)
 			if delay = (delay * 2) + 1; delay > time.Minute {
 				delay = time.Minute

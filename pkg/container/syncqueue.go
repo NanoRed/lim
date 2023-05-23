@@ -53,6 +53,7 @@ func (s *SyncQueue) Pop() (value any) {
 		} else if (*syncQueueNode)(tailNext).next == nil ||
 			(*syncQueueNode)(tailNext).next == unsafe.Pointer(s) {
 			if atomic.CompareAndSwapPointer(&s.head, tailNext, s.tail) {
+				atomic.CompareAndSwapPointer(&tailNode.next, tailNext, unsafe.Pointer(s))
 				value = (*syncQueueNode)(tailNext).value
 				return
 			}

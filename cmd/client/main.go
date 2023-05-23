@@ -4,8 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-
-	// _ "net/http/pprof"
 	"time"
 
 	"github.com/NanoRed/lim/internal"
@@ -92,8 +90,6 @@ func main() {
 	if err != nil {
 		logger.Panic("failed to create container")
 	}
-
-	// go http.ListenAndServe(":8080", nil)
 
 	if err := termdash.Run(ctx, terminal, container); err != nil {
 		logger.Panic("failed to run terminal")
