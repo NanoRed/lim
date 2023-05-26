@@ -4,6 +4,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
+	"os"
 	"time"
 
 	"github.com/NanoRed/lim/internal"
@@ -18,15 +20,29 @@ import (
 )
 
 var (
-	ip    = flag.String("ip", "106.52.81.44", "input the IP you want to dial")
-	port  = flag.String("port", "7715", "input the port you want to dial")
-	label = "sample"
+	ip   = flag.String("ip", "127.0.0.1", "input the server IP")
+	port = flag.String("port", "7714", "input the server port")
 )
+
+func init() {
+	if writer, err := os.Create("./lim.log"); err != nil {
+		logger.Panic("failed to register logger: %v", err)
+	} else {
+		logger.RegisterLogger(writer)
+	}
+}
 
 func main() {
 	flag.Parse()
 
-	client := internal.NewClient(*ip+":"+*port, internal.NewDefaultFrameProcessor())
+	label := "sample"
+
+	client := internal.NewClient(
+		func() (net.Conn, error) {
+			return net.Dial("tcp", fmt.Sprintf("%s:%s", *ip, *port))
+		},
+		internal.NewDefaultFrameProcessor(),
+	)
 	client.Connect()
 	client.Label(label)
 

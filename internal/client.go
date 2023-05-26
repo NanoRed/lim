@@ -11,63 +11,80 @@ import (
 	"github.com/NanoRed/lim/pkg/logger"
 )
 
+const (
+	terminate int32 = iota
+	preparing
+	working
+)
+
 type Client struct {
-	addr           string
+	state          int32
 	reqIn          chan<- any
 	reqOut         <-chan any
-	respSQ         *container.SyncQueue
+	respSQs        *sync.Map
 	mesgSQ         *container.SyncQueue
+	dialer         func() (net.Conn, error)
 	pauseValve     *sync.WaitGroup
-	pauseTimes     int32
+	pauseTimes     uint32
 	close          chan struct{}
 	frameProcessor FrameProcessor
 	labels         *sync.Map
+	context        []any
 }
 
-func NewClient(addr string, frameProcessor FrameProcessor) *Client {
+func NewClient(dialer func() (net.Conn, error), frameProcessor FrameProcessor) *Client {
 	client := &Client{
-		addr:           addr,
-		respSQ:         container.NewSyncQueue(),
+		state:          terminate,
+		respSQs:        &sync.Map{},
 		mesgSQ:         container.NewSyncQueue(),
+		dialer:         dialer,
 		pauseValve:     &sync.WaitGroup{},
 		pauseTimes:     0,
 		close:          make(chan struct{}, 1),
 		frameProcessor: frameProcessor,
 		labels:         &sync.Map{},
+		context:        nil,
 	}
 	client.reqIn, client.reqOut = container.NewSyncQueue().Chan()
 	return client
 }
 
-func (c *Client) Connect(a ...any) {
+func (c *Client) Connect() error {
+	if !atomic.CompareAndSwapInt32(&c.state, terminate, preparing) {
+		return errors.New("The client has started connecting")
+	}
 	var (
-		times int32
+		times uint32
 		block chan struct{}
 		delay time.Duration
 	)
-	if len(a) > 0 {
-		times = a[0].(int32)
-		block = a[1].(chan struct{})
-		delay = a[2].(time.Duration)
-	} else {
-		times = atomic.LoadInt32(&c.pauseTimes)
+	if c.context == nil {
+		times = atomic.LoadUint32(&c.pauseTimes)
 		block = make(chan struct{}, 1)
 		block <- struct{}{}
 		defer func() { block <- struct{}{}; close(block) }()
 		delay = 0
+	} else {
+		times = c.context[0].(uint32)
+		block = c.context[1].(chan struct{})
+		delay = (c.context[2].(time.Duration) * 2) + 1
+		if delay > time.Minute {
+			delay = time.Minute
+		}
 	}
 	go func() {
 		defer func() {
+			c.context = []any{times, block, delay}
+			atomic.StoreInt32(&c.state, terminate)
 			logger.Warn("reconnect in %d seconds...", delay)
 			time.Sleep(delay)
-			if delay = (delay * 2) + 1; delay > time.Minute {
-				delay = time.Minute
+			if err := c.Connect(); err != nil {
+				logger.Error("reconnect failed: %v", err)
 			}
-			c.Connect(times, block, delay)
 		}()
 		var err error
 		conn := &conn{}
-		conn.Conn, err = net.Dial("tcp", c.addr)
+		conn.Conn, err = c.dialer()
 		if err != nil {
 			logger.Error("failed to dial to server: %v", err)
 			return
@@ -82,17 +99,23 @@ func (c *Client) Connect(a ...any) {
 			logger.Error("failed to relabel: %v", err)
 			return
 		}
-		if newTimes := atomic.LoadInt32(&c.pauseTimes); times != newTimes {
+		if newTimes := atomic.LoadUint32(&c.pauseTimes); times != newTimes {
 			c.pauseValve.Done() // restart the queues
 			times = newTimes
 		}
 		<-block
+		c.respSQs.Store(conn, container.NewSyncQueue())
+		defer c.respSQs.Delete(conn)
 		go c.sendLoop(conn)
+		atomic.StoreInt32(&c.state, working)
 		c.recvLoop(conn)
 	}()
+	return nil
 }
 
 func (c *Client) recvLoop(conn *conn) {
+	q, _ := c.respSQs.Load(conn)
+	respSQ := q.(*container.SyncQueue)
 	defer conn.Close()
 	for {
 		frame, err := c.frameProcessor.Next(conn)
@@ -103,12 +126,10 @@ func (c *Client) recvLoop(conn *conn) {
 		}
 		switch frame.Type() {
 		case FTResponse:
-			if ccarrier := c.respSQ.Pop().([2]any); conn == ccarrier[0] {
-				select {
-				case ccarrier[1].(chan any) <- frame:
-				default:
-					c.frameProcessor.Recycle(frame)
-				}
+			select {
+			case respSQ.Pop().(chan any) <- frame:
+			default:
+				c.frameProcessor.Recycle(frame)
 			}
 		case FTMulticast:
 			c.mesgSQ.Push(frame)
@@ -118,6 +139,8 @@ func (c *Client) recvLoop(conn *conn) {
 
 func (c *Client) sendLoop(conn *conn) {
 	times := c.pauseTimes
+	q, _ := c.respSQs.Load(conn)
+	respSQ := q.(*container.SyncQueue)
 	heartbeatFrame := c.frameProcessor.Make(FTResponse, "", []byte{})
 	heartbeatBytes := heartbeatFrame.Encode()
 	c.frameProcessor.Recycle(heartbeatFrame)
@@ -141,8 +164,7 @@ func (c *Client) sendLoop(conn *conn) {
 				<-c.close
 				return
 			}
-			ccarrier := [2]any{conn, carrier}
-			c.respSQ.Push(ccarrier)
+			respSQ.Push(carrier)
 			c.frameProcessor.Recycle(reqFrame)
 		case <-ticker.C:
 			if _, err := conn.writex(heartbeatBytes); err != nil {
@@ -229,26 +251,37 @@ func (c *Client) request(frame Frame) (err error) {
 	return
 }
 
-func (c *Client) pause(times int32) {
-	if atomic.CompareAndSwapInt32(&c.pauseTimes, times, times+1) {
+func (c *Client) pause(times uint32) {
+	if atomic.CompareAndSwapUint32(&c.pauseTimes, times, times+1) {
 		c.pauseValve.Add(1)
 		c.close <- struct{}{}
 	}
 }
 
 func (c *Client) Label(label string) (err error) {
+	if len(label) == 0 {
+		return errors.New("invalid label")
+	}
 	c.labels.Store(label, nil)
 	frame := c.frameProcessor.Make(FTLabel, label, []byte{})
 	return c.request(frame)
 }
 
 func (c *Client) Dislabel(label string) (err error) {
+	if len(label) == 0 {
+		return errors.New("invalid label")
+	}
 	c.labels.Delete(label)
 	frame := c.frameProcessor.Make(FTLabel, label, []byte{'-'})
 	return c.request(frame)
 }
 
 func (c *Client) Multicast(label string, data []byte) (err error) {
+	if len(label) == 0 {
+		return errors.New("invalid label")
+	} else if len(data) == 0 {
+		return errors.New("invalid data")
+	}
 	frame := c.frameProcessor.Make(FTMulticast, label, data)
 	return c.request(frame)
 }

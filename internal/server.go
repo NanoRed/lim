@@ -6,20 +6,35 @@ import (
 	"net"
 	"time"
 
+	"github.com/NanoRed/lim/internal/websocket"
 	"github.com/NanoRed/lim/pkg/logger"
 )
 
 type Server struct {
-	addr           string
 	frameProcessor FrameProcessor
 }
 
-func NewServer(addr string, frameProcessor FrameProcessor) *Server {
-	return &Server{addr, frameProcessor}
+func NewServer(frameProcessor FrameProcessor) *Server {
+	return &Server{frameProcessor}
 }
 
-func (s *Server) ListenAndServe() {
-	ln, err := net.Listen("tcp", s.addr)
+func (s *Server) EnableWebsocket(addr string) {
+	go func() {
+		defer func() {
+			logger.Warn("restart websocket server in 1 seconds...")
+			time.Sleep(time.Second)
+			s.EnableWebsocket(addr)
+		}()
+		if err := websocket.NewWebsocketServer(func(c net.Conn) {
+			s.handle(&conn{Conn: c})
+		}).ListenAndServe(addr); err != nil {
+			logger.Error("websocket server error: %v", err)
+		}
+	}()
+}
+
+func (s *Server) ListenAndServe(addr string) {
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		logger.Panic("failed to listen the address: %v", err)
 	}
@@ -100,27 +115,29 @@ func (s *Server) handshake(conn *conn) (err error) {
 	return
 }
 
-func (s *Server) multicast(c *conn, frame Frame) {
+func (s *Server) multicast(conn *conn, frame Frame) {
 	defer s.frameProcessor.Recycle(frame)
 	label := frame.Label()
 	pool, err := _connlib.pool(label)
 	if err != nil {
 		errMsg := "failed to get connection pool"
 		logger.Error("%s: %s %v", errMsg, label, err)
-		s.response(c, false, errMsg)
+		s.response(conn, false, errMsg)
 		return
 	}
-	go func(data []byte) {
-		for current := pool.Entry(); current != nil; current = current.Next() {
-			go func(c *conn, label string, data []byte) {
-				if _, err := c.writex(data); err != nil {
-					logger.Error("failed to write data: %s %v", label, err)
-					_connlib.remove(c)
-				}
-			}(current.Load().(*conn), label, data)
-		}
-	}(frame.Raw())
-	s.response(c, true)
+	go s.sendToPool(pool, label, frame.Raw())
+	s.response(conn, true)
+}
+
+func (s *Server) sendToPool(pool *pool, label string, data []byte) {
+	for current := pool.Entry(); current != nil; current = current.Next() {
+		go func(conn *conn, label string, data []byte) {
+			if _, err := conn.writex(data); err != nil {
+				logger.Error("failed to write data: %s %v", label, err)
+				_connlib.remove(conn)
+			}
+		}(current.Load().(*conn), label, data)
+	}
 }
 
 func (s *Server) label(conn *conn, frame Frame) {

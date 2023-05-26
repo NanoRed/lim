@@ -2,21 +2,21 @@ package main
 
 import (
 	"flag"
+	"fmt"
 
 	"github.com/NanoRed/lim/internal"
-	"github.com/NanoRed/lim/pkg/logger"
 )
 
 var (
-	ip   = flag.String("ip", "127.0.0.1", "input the IP you want to listen to")
-	port = flag.String("port", "7714", "input the port you want to listion to")
+	ip     = flag.String("ip", "127.0.0.1", "input the server IP")
+	port   = flag.String("port", "7714", "input the server port")
+	wsPort = flag.String("wsPort", "7715", "input the websocket server port")
 )
 
 func main() {
 	flag.Parse()
 
-	server := internal.NewServer(*ip+":"+*port, internal.NewDefaultFrameProcessor())
-	logger.Pure("Lim server started")
-	server.ListenAndServe()
-	logger.Pure("server exited")
+	server := internal.NewServer(internal.NewDefaultFrameProcessor())
+	server.EnableWebsocket(fmt.Sprintf("%s:%s", *ip, *wsPort))
+	server.ListenAndServe(fmt.Sprintf("%s:%s", *ip, *port))
 }

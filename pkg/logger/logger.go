@@ -2,6 +2,7 @@ package logger
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 )
@@ -80,8 +81,16 @@ func init() {
 }
 
 // RegisterLogger register a logger
-func RegisterLogger(l Logger) {
-	logger = l
+func RegisterLogger(writer io.Writer) {
+	flag := log.LstdFlags | log.Lmicroseconds | log.Lshortfile | log.Lmsgprefix
+	logger = NewDefaultLogger(
+		log.New(writer, "", 0),
+		log.New(writer, "INFO: ", flag),
+		log.New(writer, "WARNING: ", flag),
+		log.New(writer, "ERROR: ", flag),
+		log.New(writer, "PANIC: ", flag),
+		log.New(writer, "FATAL: ", flag),
+	)
 }
 
 // Pure pure log

@@ -2,7 +2,10 @@ module github.com/NanoRed/lim
 
 go 1.20
 
-require github.com/mum4k/termdash v0.14.0
+require (
+	github.com/gorilla/websocket v1.5.0
+	github.com/mum4k/termdash v0.14.0
+)
 
 require (
 	github.com/gdamore/encoding v1.0.0 // indirect
