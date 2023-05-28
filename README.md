@@ -9,8 +9,9 @@ package main
 import "github.com/NanoRed/lim/internal"
 
 func main() {
-    server := internal.NewServer("127.0.0.1:7714", internal.NewDefaultFrameProcessor())
-	server.ListenAndServe()
+    server := internal.NewServer(internal.NewDefaultFrameProcessor())
+	server.EnableWebsocket("127.0.0.1:7715")
+	server.ListenAndServe("127.0.0.1:7714")
 }
 ```
 ```golang
@@ -20,7 +21,10 @@ package main
 import "github.com/NanoRed/lim/pkg/client"
 
 func main() {
-    client := internal.NewClient("127.0.0.1:7714", internal.NewDefaultFrameProcessor())
+    client := internal.NewClient(
+		func() (net.Conn, error) { return net.Dial("tcp", "127.0.0.1:7714") },
+		internal.NewDefaultFrameProcessor(),
+	)
 	client.Connect()
 
 	client.Label("global") // label this connection on the server
@@ -33,12 +37,45 @@ func main() {
             logger.Info("%s %s", label, message)
 		}
     }()
-    client.
-    handler.Multicast("global", []byte("hello world"))
+    client.Multicast("global", []byte("hello world"))
 
-    for{
-    }
+    select{}
 }
+```
+```html
+<!-- websocket client -->
+<head>
+    <script src="wasm_exec.js"></script>
+    <script>
+        const go = new Go();
+        WebAssembly.instantiateStreaming(fetch("limcli.wasm"), go.importObject)
+            .then((result) => {
+                go.run(result.instance);
+
+                // *exposed function: lim_websocket_connect
+                // connect to the websocket server
+                lim_websocket_connect(); 
+
+                // *exposed function: lim_websocket_label
+                // label this connection on the server
+                lim_websocket_label("global");
+            })
+
+        function sendMessage(message) {
+            // *exposed function: lim_websocket_multicast
+            // multicast a message to specific label group
+            lim_websocket_multicast("global", message);
+        }
+
+        // *invoke function: lim_websocket_onreceive
+        // after you define a function with this name,
+        // when a message arrives, the runtime will invoke
+        // your function
+        function lim_websocket_onreceive(label, message) {
+            console.log(label, message);
+        }
+    </script>
+</head>
 ```
 ### Development Trends
 - ☑️ basic available tcp server
@@ -50,7 +87,7 @@ func main() {
 - ☑️ simple authentication
 - ☑️ backoff delay reconnection
 - ☑️ relabel when reconnecting
+- ☑️ websocket support
 - 🟦 better authentication
-- 🟦 websocket support
 - 🟦 cluster support
 - 🟦 docs
