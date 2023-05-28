@@ -4,21 +4,30 @@
     <title>Chat Room</title>
     <script src="./js/wasm_exec.js"></script>
     <script>
+        var label = "sample"
+
         const go = new Go();
         WebAssembly.instantiateStreaming(fetch("./wasm/limcli.wasm"), go.importObject)
             .then((result) => {
                 go.run(result.instance);
 
                 lim_websocket_connect();
-                lim_websocket_label("sample");
+                lim_websocket_label(label);
             })
+        
+        // When websocket successfully connected
+        function lim_websocket_onload() {
+            const input = document.getElementById('messageInput');
+            input.removeAttribute('placeholder')
+            input.removeAttribute('disabled')
+        }
 
         // Send a message via WebSocket
         function sendMessage() {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
             if (message) {
-                lim_websocket_multicast("sample", message);
+                lim_websocket_multicast(label, message);
                 input.value = '';
             }
         }
@@ -38,7 +47,7 @@
     <div id="chatBox">
         <textarea id="messageOutput" rows="10" cols="50" readonly></textarea>
         <br>
-        <input type="text" id="messageInput" style="width: 331px;" onkeydown="handleEnterKey(event)">
+        <input type="text" id="messageInput" style="width: 331px;" onkeydown="handleEnterKey(event)" placeholder="连接服务器中" disabled>
         <button onclick="sendMessage()">Send</button>
     </div>
 

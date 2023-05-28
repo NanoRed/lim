@@ -61,6 +61,13 @@ func main() {
                 lim_websocket_label("global");
             })
 
+        // *exposed function: lim_websocket_onload
+        // when websocket successfully connected, 
+        // the runtime will invoke this function
+        function lim_websocket_onload() {
+            // do something
+        }
+
         function sendMessage(message) {
             // *exposed function: lim_websocket_multicast
             // multicast a message to specific label group
@@ -70,7 +77,7 @@ func main() {
         // *invoke function: lim_websocket_onreceive
         // after you define a function with this name,
         // when a message arrives, the runtime will invoke
-        // your function
+        // this function
         function lim_websocket_onreceive(label, message) {
             console.log(label, message);
         }

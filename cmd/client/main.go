@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"time"
@@ -36,6 +37,8 @@ func main() {
 	flag.Parse()
 
 	label := "sample"
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	name := pokemonNames[r.Intn(55)]
 
 	client := internal.NewClient(
 		func() (net.Conn, error) {
@@ -61,8 +64,8 @@ func main() {
 	}
 	go func() {
 		for {
-			if l, msg := client.Receive(); l == label {
-				err := roll.Write(fmt.Sprintf("[%s] %s\n", time.Now().Format("15:04"), msg))
+			if l, message := client.Receive(); l == label {
+				err := roll.Write(fmt.Sprintf("%s\n", message))
 				if err != nil {
 					logger.Panic("failed to write message into the roll widget")
 				}
@@ -77,7 +80,7 @@ func main() {
 			if text == ":q" {
 				cancel()
 			} else {
-				client.Multicast(label, []byte(text))
+				client.Multicast(label, []byte(fmt.Sprintf("[%s]%s: %s", time.Now().Format("15:04:05"), name, text)))
 			}
 			return nil
 		}),
@@ -110,4 +113,62 @@ func main() {
 	if err := termdash.Run(ctx, terminal, container); err != nil {
 		logger.Panic("failed to run terminal")
 	}
+}
+
+var pokemonNames = [55]string{
+	"Pikachu",
+	"Bulbasaur",
+	"Charmander",
+	"Squirtle",
+	"Jigglypuff",
+	"Meowth",
+	"Psyduck",
+	"Growlithe",
+	"Poliwag",
+	"Abra",
+	"Machop",
+	"Tentacool",
+	"Geodude",
+	"Magnemite",
+	"Grimer",
+	"Shellder",
+	"Gastly",
+	"Onix",
+	"Drowzee",
+	"Krabby",
+	"Voltorb",
+	"Exeggcute",
+	"Cubone",
+	"Hitmonlee",
+	"Hitmonchan",
+	"Lickitung",
+	"Koffing",
+	"Rhyhorn",
+	"Chansey",
+	"Tangela",
+	"Kangaskhan",
+	"Horsea",
+	"Goldeen",
+	"Staryu",
+	"Scyther",
+	"Jynx",
+	"Electabuzz",
+	"Magmar",
+	"Pinsir",
+	"Tauros",
+	"Magikarp",
+	"Lapras",
+	"Ditto",
+	"Eevee",
+	"Porygon",
+	"Omanyte",
+	"Kabuto",
+	"Aerodactyl",
+	"Snorlax",
+	"Articuno",
+	"Zapdos",
+	"Moltres",
+	"Dratini",
+	"Dragonair",
+	"Dragonite",
 }

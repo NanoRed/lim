@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"fmt"
+	"math/rand"
 	"net"
 	"sync"
 	"syscall/js"
@@ -29,6 +31,8 @@ func init() {
 }
 
 func main() {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	name := pokemonNames[r.Intn(55)]
 	client := internal.NewClient(
 		func() (net.Conn, error) {
 			once := &sync.Once{}
@@ -105,12 +109,18 @@ func main() {
 		internal.NewDefaultFrameProcessor(),
 	)
 	wg := &sync.WaitGroup{}
+	connected := make(chan struct{}, 1)
 	// func: lim_websocket_connect
 	js.Global().Set("lim_websocket_connect", js.FuncOf(func(this js.Value, args []js.Value) any {
 		wg.Add(1)
 		go func() {
 			if err := client.Connect(); err != nil {
 				logger.Error("connect failed: %v", err)
+			} else {
+				select {
+				case connected <- struct{}{}:
+				default:
+				}
 			}
 			wg.Done()
 		}()
@@ -147,7 +157,10 @@ func main() {
 		if len(args) > 1 {
 			go func() {
 				wg.Wait()
-				if err := client.Multicast(args[0].String(), []byte(args[1].String())); err != nil {
+				if err := client.Multicast(
+					args[0].String(),
+					[]byte(fmt.Sprintf("[%s]%s: %s", time.Now().Format("15:04:05"), name, args[1].String())),
+				); err != nil {
 					logger.Error("multicast failed: %v", err)
 				}
 			}()
@@ -164,5 +177,72 @@ func main() {
 			}
 		}
 	}()
+	// invoke: lim_websocket_onload
+	go func() {
+		for {
+			<-connected
+			if fn := js.Global().Get("lim_websocket_onload"); fn.Type() == js.TypeFunction {
+				fn.Invoke()
+			}
+		}
+	}()
 	select {}
+}
+
+var pokemonNames = [55]string{
+	"Pikachu",
+	"Bulbasaur",
+	"Charmander",
+	"Squirtle",
+	"Jigglypuff",
+	"Meowth",
+	"Psyduck",
+	"Growlithe",
+	"Poliwag",
+	"Abra",
+	"Machop",
+	"Tentacool",
+	"Geodude",
+	"Magnemite",
+	"Grimer",
+	"Shellder",
+	"Gastly",
+	"Onix",
+	"Drowzee",
+	"Krabby",
+	"Voltorb",
+	"Exeggcute",
+	"Cubone",
+	"Hitmonlee",
+	"Hitmonchan",
+	"Lickitung",
+	"Koffing",
+	"Rhyhorn",
+	"Chansey",
+	"Tangela",
+	"Kangaskhan",
+	"Horsea",
+	"Goldeen",
+	"Staryu",
+	"Scyther",
+	"Jynx",
+	"Electabuzz",
+	"Magmar",
+	"Pinsir",
+	"Tauros",
+	"Magikarp",
+	"Lapras",
+	"Ditto",
+	"Eevee",
+	"Porygon",
+	"Omanyte",
+	"Kabuto",
+	"Aerodactyl",
+	"Snorlax",
+	"Articuno",
+	"Zapdos",
+	"Moltres",
+	"Dratini",
+	"Dragonair",
+	"Dragonite",
 }
