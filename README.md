@@ -90,9 +90,9 @@ func main() {
 - ☑️ customizable frame protocol
 - ☑️ customizable logger
 - ☑️ client that support reconnection
+- ☑️ heartbeat sending
 - ☑️ binary exponential backoff reconnection
 - ☑️ relabel automatically when reconnecting
-- ☑️ heartbeat sending
 - ☑️ simple authentication
 - ☑️ support websocket
 - 🟦 better authentication
