@@ -54,7 +54,10 @@ func NewDefaultFrame() Frame {
 }
 
 func (f *DefaultFrame) Raw() []byte {
-	return f.raw.Bytes()
+	rawBytes := f.raw.Bytes()
+	rtBytes := make([]byte, len(rawBytes))
+	copy(rtBytes, rawBytes)
+	return rtBytes
 }
 
 func (f *DefaultFrame) Type() FrameType {
@@ -90,11 +93,14 @@ func (f *DefaultFrame) Encode() []byte {
 	if header&0x1f > 0 {
 		f.raw.Write(f.payload.Bytes())
 	}
-	return f.raw.Bytes()
+	return f.Raw()
 }
 
 func (f *DefaultFrame) Payload() []byte {
-	return f.payload.Bytes()
+	plBytes := f.payload.Bytes()
+	rtBytes := make([]byte, len(plBytes))
+	copy(rtBytes, plBytes)
+	return rtBytes
 }
 
 type DefaultFrameProcessor struct {

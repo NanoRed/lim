@@ -12,7 +12,7 @@ type Server struct {
 	handle func(conn net.Conn)
 }
 
-func NewWebsocketServer(handle func(conn net.Conn)) *Server {
+func NewServer(handle func(conn net.Conn)) *Server {
 	return &Server{handle}
 }
 
@@ -26,9 +26,8 @@ func (s *Server) ListenAndServe(addr string) (err error) {
 		c, err := upgrader.Upgrade(wt, r, nil)
 		if err != nil {
 			logger.Error("websocket upgrade error: %v", err)
-			c.Close()
 			return
 		}
-		s.handle(newSrvConn(c))
+		s.handle(newConn(c))
 	}))
 }

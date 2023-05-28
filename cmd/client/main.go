@@ -25,7 +25,7 @@ var (
 )
 
 func init() {
-	if writer, err := os.Create("./lim.log"); err != nil {
+	if writer, err := os.Create("./limcli.log"); err != nil {
 		logger.Panic("failed to register logger: %v", err)
 	} else {
 		logger.RegisterLogger(writer)

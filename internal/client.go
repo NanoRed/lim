@@ -51,7 +51,7 @@ func NewClient(dialer func() (net.Conn, error), frameProcessor FrameProcessor) *
 
 func (c *Client) Connect() error {
 	if !atomic.CompareAndSwapInt32(&c.state, terminate, preparing) {
-		return errors.New("The client has started connecting")
+		return errors.New("the client has started connecting")
 	}
 	var (
 		times uint32

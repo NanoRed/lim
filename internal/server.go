@@ -25,7 +25,7 @@ func (s *Server) EnableWebsocket(addr string) {
 			time.Sleep(time.Second)
 			s.EnableWebsocket(addr)
 		}()
-		if err := websocket.NewWebsocketServer(func(c net.Conn) {
+		if err := websocket.NewServer(func(c net.Conn) {
 			s.handle(&conn{Conn: c})
 		}).ListenAndServe(addr); err != nil {
 			logger.Error("websocket server error: %v", err)
@@ -141,6 +141,7 @@ func (s *Server) sendToPool(pool *pool, label string, data []byte) {
 }
 
 func (s *Server) label(conn *conn, frame Frame) {
+	// TODO support set multiple labels in one time
 	defer s.frameProcessor.Recycle(frame)
 	label := frame.Label()
 	if len(frame.Payload()) > 0 {

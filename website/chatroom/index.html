@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat Room</title>
+    <script src="./js/wasm_exec.js"></script>
+    <script>
+        const go = new Go();
+        WebAssembly.instantiateStreaming(fetch("./wasm/limcli.wasm"), go.importObject)
+            .then((result) => {
+                go.run(result.instance);
+
+                lim_websocket_connect()
+                lim_websocket_label("sample")
+            })
+
+        // Send a message via WebSocket
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            if (message) {
+                lim_websocket_multicast("sample", message);
+                input.value = '';
+            }
+        }
+
+        // Handle received messages
+        function lim_websocket_onreceive(label, message) {
+            const output = document.getElementById('messageOutput');
+            output.textContent += message + '\n';
+            output.scrollTop = output.scrollHeight
+        }
+
+    </script>
+</head>
+<body>
+    <h1>Chat Room</h1>
+
+    <div id="chatBox">
+        <textarea id="messageOutput" rows="10" cols="50" readonly></textarea>
+        <br>
+        <input type="text" id="messageInput" style="width: 331px;" onkeydown="handleEnterKey(event)">
+        <button onclick="sendMessage()">Send</button>
+    </div>
+
+    <script>
+        function handleEnterKey(event) {
+            if (event.keyCode == 13) {
+                sendMessage();
+            }
+        }
+    </script>
+</body>
+</html>

@@ -54,7 +54,10 @@ func (c *connLibrary) remove(conn *conn) {
 				if pool.Entry() == nil {
 					pool.rwmu.Lock()
 					if pool.Entry() == nil {
-						c.labelConn.CompareAndDelete(label, pool)
+						if p, ok := c.labelConn.Load(label); ok && p == pool {
+							c.labelConn.Delete(label)
+						}
+						// c.labelConn.CompareAndDelete(label, pool)
 						pool.rwmu.Unlock()
 						c.gcpool.Put(pool)
 					} else {
@@ -98,7 +101,10 @@ GETPOOL:
 		if pool.Entry() == nil {
 			pool.rwmu.Lock()
 			if pool.Entry() == nil {
-				c.labelConn.CompareAndDelete(label, pool)
+				if p, ok := c.labelConn.Load(label); ok && p == pool {
+					c.labelConn.Delete(label)
+				}
+				// c.labelConn.CompareAndDelete(label, pool)
 				pool.rwmu.Unlock()
 				c.gcpool.Put(pool)
 			} else {
@@ -126,7 +132,10 @@ func (c *connLibrary) dislabel(conn *conn, label string) error {
 		if pool.Entry() == nil {
 			pool.rwmu.Lock()
 			if pool.Entry() == nil {
-				c.labelConn.CompareAndDelete(label, pool)
+				if p, ok := c.labelConn.Load(label); ok && p == pool {
+					c.labelConn.Delete(label)
+				}
+				// c.labelConn.CompareAndDelete(label, pool)
 				pool.rwmu.Unlock()
 				c.gcpool.Put(pool)
 			} else {

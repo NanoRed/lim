@@ -16,6 +16,7 @@ type Logger interface {
 	Error(stackoffset int, format string, v ...any)
 	Panic(stackoffset int, format string, v ...any)
 	Fatal(stackoffset int, format string, v ...any)
+	Debug(stackoffset int, format string, v ...any)
 }
 
 // DefaultLogger default logger
@@ -26,11 +27,12 @@ type DefaultLogger struct {
 	err     *log.Logger
 	panic   *log.Logger
 	fatal   *log.Logger
+	debug   *log.Logger
 }
 
 // NewDefaultLogger create a default logger
 func NewDefaultLogger(logger ...*log.Logger) *DefaultLogger {
-	return &DefaultLogger{logger[0], logger[1], logger[2], logger[3], logger[4], logger[5]}
+	return &DefaultLogger{logger[0], logger[1], logger[2], logger[3], logger[4], logger[5], logger[6]}
 }
 
 // Pure pure log
@@ -66,6 +68,11 @@ func (l *DefaultLogger) Fatal(stackoffset int, format string, v ...any) {
 	os.Exit(1)
 }
 
+// Debug debug log
+func (l *DefaultLogger) Debug(stackoffset int, format string, v ...any) {
+	l.debug.Output(2+stackoffset, fmt.Sprintf(format, v...))
+}
+
 var logger Logger
 
 func init() {
@@ -77,6 +84,7 @@ func init() {
 		log.New(os.Stdout, "ERROR: ", flag),
 		log.New(os.Stdout, "PANIC: ", flag),
 		log.New(os.Stdout, "FATAL: ", flag),
+		log.New(os.Stdout, "DEBUG: ", flag),
 	)
 }
 
@@ -90,6 +98,7 @@ func RegisterLogger(writer io.Writer) {
 		log.New(writer, "ERROR: ", flag),
 		log.New(writer, "PANIC: ", flag),
 		log.New(writer, "FATAL: ", flag),
+		log.New(writer, "DEBUG: ", flag),
 	)
 }
 
@@ -121,4 +130,9 @@ func Panic(format string, v ...any) {
 // Fatal fatal log and exit
 func Fatal(format string, v ...any) {
 	logger.Fatal(1, format, v...)
+}
+
+// Debug debug log
+func Debug(format string, v ...any) {
+	logger.Debug(1, format, v...)
 }
