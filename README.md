@@ -85,16 +85,16 @@ func main() {
 </head>
 ```
 ### Development Trends
-- ☑️ basic available tcp server
-- ☑️ connections manager(based on label)
-- ☑️ protocol and custom protocol interface
-- ☑️ logger and custom logger interface
-- ☑️ complex and robust client implement
-- ☑️ client connection heartbeat
+- ☑️ tcp server
+- ☑️ labeled connection pool
+- ☑️ customizable frame protocol
+- ☑️ customizable logger
+- ☑️ client that support reconnection
+- ☑️ binary exponential backoff reconnection
+- ☑️ relabel automatically when reconnecting
+- ☑️ heartbeat sending
 - ☑️ simple authentication
-- ☑️ backoff delay reconnection
-- ☑️ relabel when reconnecting
-- ☑️ websocket support
+- ☑️ support websocket
 - 🟦 better authentication
-- 🟦 cluster support
+- 🟦 support cluster
 - 🟦 docs
