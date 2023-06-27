@@ -3,4 +3,4 @@ package website
 import "embed"
 
 //go:embed chatroom
-var FS embed.FS
+var ChatRoomFS embed.FS

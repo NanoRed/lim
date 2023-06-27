@@ -3,9 +3,7 @@ package internal
 import (
 	"errors"
 	"fmt"
-	"net"
 	"sync"
-	"time"
 
 	"github.com/NanoRed/lim/pkg/container"
 )
@@ -16,18 +14,6 @@ var _connlib = &connLibrary{
 	gcpool: &sync.Pool{New: func() any {
 		return &pool{SyncPool: container.NewSyncPool()}
 	}},
-}
-
-type conn struct {
-	net.Conn
-}
-
-func (c *conn) writex(data []byte) (n int, err error) {
-	if err = c.SetWriteDeadline(time.Now().Add(ConnWriteTimeout)); err != nil {
-		return
-	}
-	n, err = c.Write(data)
-	return
 }
 
 type pool struct {

@@ -7,7 +7,7 @@ server:
 .PHONY: client
 client:
 	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC=x86_64-w64-mingw32-gcc go build -o limcli.exe github.com/NanoRed/lim/cmd/client
-	mv ./limcli.exe /mnt/s/mine/lim
+	mv ./limcli.exe /mnt/d/mine/lim
 
 .PHONY: wasm
 wasm:

@@ -2,7 +2,7 @@ package main
 
 import (
 	"bufio"
-	"fmt"
+	"bytes"
 	"math/rand"
 	"net"
 	"sync"
@@ -106,10 +106,17 @@ func main() {
 			close(ok)
 			return conn1, nil
 		},
-		internal.NewDefaultFrameProcessor(),
 	)
 	wg := &sync.WaitGroup{}
 	connected := make(chan struct{}, 1)
+	textEncoder := js.Global().Get("TextEncoder").New()
+	jsValueToGoBytes := func(val js.Value) []byte {
+		eocodedText := textEncoder.Call("encode", val)
+		textArray := js.Global().Get("Uint8Array").New(eocodedText)
+		textBytes := make([]byte, textArray.Length())
+		js.CopyBytesToGo(textBytes, textArray)
+		return textBytes
+	}
 	// func: lim_websocket_connect
 	js.Global().Set("lim_websocket_connect", js.FuncOf(func(this js.Value, args []js.Value) any {
 		wg.Add(1)
@@ -131,7 +138,7 @@ func main() {
 		if len(args) > 0 {
 			go func() {
 				wg.Wait()
-				if err := client.Label(args[0].String()); err != nil {
+				if err := client.Label(string(jsValueToGoBytes(args[0]))); err != nil {
 					logger.Error("label failed: %v", err)
 				}
 			}()
@@ -144,7 +151,7 @@ func main() {
 		if len(args) > 0 {
 			go func() {
 				wg.Wait()
-				if err := client.Dislabel(args[0].String()); err != nil {
+				if err := client.Dislabel(string(jsValueToGoBytes(args[0]))); err != nil {
 					logger.Error("dislabel failed: %v", err)
 				}
 			}()
@@ -157,10 +164,14 @@ func main() {
 		if len(args) > 1 {
 			go func() {
 				wg.Wait()
-				if err := client.Multicast(
-					args[0].String(),
-					[]byte(fmt.Sprintf("[%s]%s: %s", time.Now().Format("15:04:05"), name, args[1].String())),
-				); err != nil {
+				payload := &bytes.Buffer{}
+				payload.WriteByte('[')
+				payload.WriteString(time.Now().Format("15:04:05"))
+				payload.WriteByte(']')
+				payload.WriteString(name)
+				payload.Write([]byte{':', ' '})
+				payload.Write(jsValueToGoBytes(args[1]))
+				if err := client.Multicast(string(jsValueToGoBytes(args[0])), payload.Bytes()); err != nil {
 					logger.Error("multicast failed: %v", err)
 				}
 			}()
@@ -171,9 +182,11 @@ func main() {
 	// invoke: lim_websocket_onreceive
 	go func() {
 		for {
-			label, message := client.Receive()
-			if fn := js.Global().Get("lim_websocket_onreceive"); fn.Type() == js.TypeFunction {
-				fn.Invoke(label, string(message))
+			label, messages := client.Receive()
+			for _, message := range messages {
+				if fn := js.Global().Get("lim_websocket_onreceive"); fn.Type() == js.TypeFunction {
+					fn.Invoke(label, string(message))
+				}
 			}
 		}
 	}()

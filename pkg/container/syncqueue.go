@@ -64,18 +64,16 @@ func (s *SyncQueue) Pop() (value any) {
 	}
 }
 
-func (s *SyncQueue) Chan() (in, out chan any) {
-	in = make(chan any)
-	out = make(chan any)
+func (s *SyncQueue) Install(in, out chan any) {
 	go func(in chan any) {
 		for element := range in {
 			s.Push(element)
 		}
 	}(in)
 	go func(out chan any) {
+		defer func() { recover() }()
 		for {
 			out <- s.Pop()
 		}
 	}(out)
-	return
 }

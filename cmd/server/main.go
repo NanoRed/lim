@@ -16,7 +16,7 @@ var (
 func main() {
 	flag.Parse()
 
-	server := internal.NewServer(internal.NewDefaultFrameProcessor())
+	server := internal.NewServer()
 	server.EnableWebsocket(fmt.Sprintf("%s:%s", *ip, *wsPort))
 	server.ListenAndServe(fmt.Sprintf("%s:%s", *ip, *port))
 }

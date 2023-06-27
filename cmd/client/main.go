@@ -44,7 +44,6 @@ func main() {
 		func() (net.Conn, error) {
 			return net.Dial("tcp", fmt.Sprintf("%s:%s", *ip, *port))
 		},
-		internal.NewDefaultFrameProcessor(),
 	)
 	client.Connect()
 	client.Label(label)
@@ -64,10 +63,12 @@ func main() {
 	}
 	go func() {
 		for {
-			if l, message := client.Receive(); l == label {
-				err := roll.Write(fmt.Sprintf("%s\n", message))
-				if err != nil {
-					logger.Panic("failed to write message into the roll widget")
+			if l, messages := client.Receive(); l == label {
+				for _, message := range messages {
+					err := roll.Write(fmt.Sprintf("%s\n", message))
+					if err != nil {
+						logger.Panic("failed to write message into the roll widget")
+					}
 				}
 			}
 		}

@@ -4,18 +4,19 @@ import (
 	"bytes"
 	"errors"
 	"net"
+	"strings"
 	"time"
 
+	"github.com/NanoRed/lim/internal/protocol"
 	"github.com/NanoRed/lim/internal/websocket"
 	"github.com/NanoRed/lim/pkg/logger"
 )
 
 type Server struct {
-	frameProcessor FrameProcessor
 }
 
-func NewServer(frameProcessor FrameProcessor) *Server {
-	return &Server{frameProcessor}
+func NewServer() *Server {
+	return &Server{}
 }
 
 func (s *Server) EnableWebsocket(addr string) {
@@ -51,111 +52,120 @@ func (s *Server) ListenAndServe(addr string) {
 
 func (s *Server) handle(conn *conn) {
 	defer _connlib.remove(conn)
-	if err := s.handshake(conn); err != nil {
+
+	frame := &protocol.Frame{}
+	processor := protocol.NewFrameProcessor(conn)
+
+	// handshake
+	if err := s.handshake(processor, frame); err != nil {
 		logger.Error("verification failed: %v", err)
 		return
-	}
-	for {
-		err := conn.SetReadDeadline(time.Now().Add(ConnReadDuration))
-		if err != nil {
-			logger.Error("failed to set read deadline: %v", err)
+	} else { // only response on a successful handshake
+		_connlib.register(conn)
+		if err := s.response(processor, frame, ""); err != nil {
+			logger.Error("failed to response: %v", err)
 			return
 		}
-		frame, err := s.frameProcessor.Next(conn)
+	}
+
+	for {
+		err := processor.SetDecodeTimeout(ConnReadDuration)
 		if err != nil {
-			s.frameProcessor.Recycle(frame)
+			logger.Error("failed to set decode deadline: %v", err)
+			return
+		}
+		raw, err := processor.Decode(frame)
+		if err != nil {
 			logger.Error("failed to read next frame: %v", err)
 			return
 		}
-		switch frame.Type() {
-		case FTResponse:
+		switch frame.Act {
+		case protocol.ActResponse:
 			// heartbeat
-			s.frameProcessor.Recycle(frame)
-		case FTMulticast:
-			s.multicast(conn, frame)
-		case FTLabel:
-			s.label(conn, frame)
+		case protocol.ActMulticast:
+			if err := s.multicast(frame.Label, raw); err != nil {
+				logger.Error("failed to multicast data: %v %s %v", err, frame.Label, frame.Payload)
+			}
+		case protocol.ActLabel:
+			if err := s.label(conn, frame.Label, frame.Payload); err != nil {
+				errMsg := "failed to (dis)label connection"
+				logger.Error("%s: %v %s %v", errMsg, err, frame.Label, frame.Payload)
+				if err := s.response(processor, frame, errMsg); err != nil {
+					logger.Error("failed to response: %v", err)
+					return
+				}
+			} else if err := s.response(processor, frame, ""); err != nil {
+				logger.Error("failed to response: %v", err)
+				return
+			}
 		}
 	}
 }
 
-func (s *Server) response(conn *conn, success bool, message ...string) {
-	var payload []byte
-	if success {
-		payload = []byte{}
-	} else if len(message) > 0 {
-		payload = []byte(message[0])
-	} else {
-		payload = []byte{'i', 'n', 'v', 'a', 'l', 'i', 'd', ' ', 'r', 'e', 'q', 'u', 'e', 's', 't'}
-	}
-	respFrame := s.frameProcessor.Make(FTResponse, "", payload)
-	defer s.frameProcessor.Recycle(respFrame)
-	if _, err := conn.writex(respFrame.Encode()); err != nil {
-		logger.Error("failed to write data: %s %v", payload, err)
-		_connlib.remove(conn)
-	}
+func (s *Server) response(processor *protocol.FrameProcessor, frame *protocol.Frame, errMsg string) (err error) {
+	frame.Act = protocol.ActResponse
+	frame.Label = ""
+	frame.Payload = []byte(errMsg)
+	return processor.Encode(frame)
 }
 
-func (s *Server) handshake(conn *conn) (err error) {
-	err = conn.SetReadDeadline(time.Now().Add(ConnReadDuration))
+func (s *Server) handshake(processor *protocol.FrameProcessor, frame *protocol.Frame) (err error) {
+	err = processor.SetDecodeTimeout(ConnReadDuration)
 	if err != nil {
 		return
 	}
-	frame, err := s.frameProcessor.Next(conn)
-	defer s.frameProcessor.Recycle(frame)
+	_, err = processor.Decode(frame)
 	if err != nil {
 		return
 	}
-	if frame.Type() == FTHandshake && bytes.Equal(frame.Payload(), []byte("sample_secret")) { // TODO
-		_connlib.register(conn)
-		s.response(conn, true) // only response on a successful handshake
-	} else {
+	if frame.Act != protocol.ActHandshake || !bytes.Equal(frame.Payload, []byte("sample_secret")) { // TODO
 		err = errors.New("illegal connection")
 	}
 	return
 }
 
-func (s *Server) multicast(conn *conn, frame Frame) {
-	defer s.frameProcessor.Recycle(frame)
-	label := frame.Label()
+func (s *Server) multicast(label string, data []byte) (err error) {
 	pool, err := _connlib.pool(label)
 	if err != nil {
-		errMsg := "failed to get connection pool"
-		logger.Error("%s: %s %v", errMsg, label, err)
-		s.response(conn, false, errMsg)
 		return
 	}
-	go s.sendToPool(pool, label, frame.Raw())
-	s.response(conn, true)
-}
-
-func (s *Server) sendToPool(pool *pool, label string, data []byte) {
-	for current := pool.Entry(); current != nil; current = current.Next() {
-		go func(conn *conn, label string, data []byte) {
-			if _, err := conn.writex(data); err != nil {
-				logger.Error("failed to write data: %s %v", label, err)
-				_connlib.remove(conn)
-			}
-		}(current.Load().(*conn), label, data)
-	}
-}
-
-func (s *Server) label(conn *conn, frame Frame) {
-	// TODO support set multiple labels in one time
-	defer s.frameProcessor.Recycle(frame)
-	label := frame.Label()
-	if len(frame.Payload()) > 0 {
-		if err := _connlib.dislabel(conn, label); err != nil {
-			errMsg := "failed to dislabel connection"
-			logger.Error("%s: %s %v", errMsg, label, err)
-			s.response(conn, false, errMsg)
-			return
+	go func() {
+		for current := pool.Entry(); current != nil; current = current.Next() {
+			go func(conn *conn) {
+				if _, err := conn.Write(data); err != nil {
+					logger.Error("failed to write data: %s %v", label, err)
+					_connlib.remove(conn)
+				}
+			}(current.Load().(*conn))
 		}
-	} else if err := _connlib.label(conn, label); err != nil {
-		errMsg := "failed to label connection"
-		logger.Error("%s: %s %v", errMsg, label, err)
-		s.response(conn, false, errMsg)
-		return
+	}()
+	return
+}
+
+func (s *Server) label(conn *conn, label string, payload []byte) (err error) {
+	if len(payload) > 0 {
+		switch payload[0] {
+		case '+':
+			err = _connlib.label(conn, label)
+		case '*':
+			for _, l := range strings.Split(label, "|") {
+				if err = _connlib.label(conn, l); err != nil {
+					break
+				}
+			}
+		case '-':
+			err = _connlib.dislabel(conn, label)
+		case '/':
+			for _, l := range strings.Split(label, "|") {
+				if err = _connlib.dislabel(conn, l); err != nil {
+					break
+				}
+			}
+		default:
+			err = errors.New("unknown operator")
+		}
+	} else {
+		err = errors.New("operator missing")
 	}
-	s.response(conn, true)
+	return
 }

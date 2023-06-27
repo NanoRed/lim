@@ -17,7 +17,7 @@ var (
 func main() {
 	flag.Parse()
 
-	http.Handle("/", http.FileServer(http.FS(website.FS)))
+	http.Handle("/", http.FileServer(http.FS(website.ChatRoomFS)))
 	if err := http.ListenAndServe(fmt.Sprintf("%s:%s", *ip, *port), nil); err != nil {
 		logger.Error("website server error: %v", err)
 	}
