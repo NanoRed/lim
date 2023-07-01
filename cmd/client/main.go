@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -37,8 +38,7 @@ func main() {
 	flag.Parse()
 
 	label := "sample"
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	name := pokemonNames[r.Intn(55)]
+	name := getRandomName()
 
 	client := internal.NewClient(
 		func() (net.Conn, error) {
@@ -65,7 +65,7 @@ func main() {
 		for {
 			if l, messages := client.Receive(); l == label {
 				for _, message := range messages {
-					err := roll.Write(fmt.Sprintf("%s\n", message))
+					err := roll.Write(fmt.Sprintf("[%s]%s\n", time.Now().Format("15:04:05"), message))
 					if err != nil {
 						logger.Panic("failed to write message into the roll widget")
 					}
@@ -81,7 +81,11 @@ func main() {
 			if text == ":q" {
 				cancel()
 			} else {
-				client.Multicast(label, []byte(fmt.Sprintf("[%s]%s: %s", time.Now().Format("15:04:05"), name, text)))
+				payload := &bytes.Buffer{}
+				payload.WriteString(name)
+				payload.WriteString(": ")
+				payload.WriteString(text)
+				client.Multicast(label, payload.Bytes())
 			}
 			return nil
 		}),
@@ -116,60 +120,18 @@ func main() {
 	}
 }
 
-var pokemonNames = [55]string{
-	"Pikachu",
-	"Bulbasaur",
-	"Charmander",
-	"Squirtle",
-	"Jigglypuff",
-	"Meowth",
-	"Psyduck",
-	"Growlithe",
-	"Poliwag",
-	"Abra",
-	"Machop",
-	"Tentacool",
-	"Geodude",
-	"Magnemite",
-	"Grimer",
-	"Shellder",
-	"Gastly",
-	"Onix",
-	"Drowzee",
-	"Krabby",
-	"Voltorb",
-	"Exeggcute",
-	"Cubone",
-	"Hitmonlee",
-	"Hitmonchan",
-	"Lickitung",
-	"Koffing",
-	"Rhyhorn",
-	"Chansey",
-	"Tangela",
-	"Kangaskhan",
-	"Horsea",
-	"Goldeen",
-	"Staryu",
-	"Scyther",
-	"Jynx",
-	"Electabuzz",
-	"Magmar",
-	"Pinsir",
-	"Tauros",
-	"Magikarp",
-	"Lapras",
-	"Ditto",
-	"Eevee",
-	"Porygon",
-	"Omanyte",
-	"Kabuto",
-	"Aerodactyl",
-	"Snorlax",
-	"Articuno",
-	"Zapdos",
-	"Moltres",
-	"Dratini",
-	"Dragonair",
-	"Dragonite",
-}
+var getRandomName = func() func() string {
+	pokemonNames := [55]string{
+		"Pikachu", "Bulbasaur", "Charmander", "Squirtle", "Jigglypuff", "Meowth", "Psyduck", "Growlithe",
+		"Poliwag", "Abra", "Machop", "Tentacool", "Geodude", "Magnemite", "Grimer", "Shellder", "Gastly",
+		"Onix", "Drowzee", "Krabby", "Voltorb", "Exeggcute", "Cubone", "Hitmonlee", "Hitmonchan", "Lickitung",
+		"Koffing", "Rhyhorn", "Chansey", "Tangela", "Kangaskhan", "Horsea", "Goldeen", "Staryu", "Scyther",
+		"Jynx", "Electabuzz", "Magmar", "Pinsir", "Tauros", "Magikarp", "Lapras", "Ditto", "Eevee", "Porygon",
+		"Omanyte", "Kabuto", "Aerodactyl", "Snorlax", "Articuno", "Zapdos", "Moltres", "Dratini", "Dragonair",
+		"Dragonite",
+	}
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	return func() string {
+		return pokemonNames[r.Intn(55)]
+	}
+}()

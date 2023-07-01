@@ -16,8 +16,8 @@ func NewServer(handle func(conn net.Conn)) *Server {
 	return &Server{handle}
 }
 
-func (s *Server) ListenAndServe(addr string) (err error) {
-	return http.ListenAndServe(addr, http.HandlerFunc(func(wt http.ResponseWriter, r *http.Request) {
+func (s *Server) ListenAndServeTLS(addr string, certFile, keyFile string) (err error) {
+	return http.ListenAndServeTLS(addr, certFile, keyFile, http.HandlerFunc(func(wt http.ResponseWriter, r *http.Request) {
 		var upgrader = websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				return true

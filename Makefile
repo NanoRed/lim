@@ -11,9 +11,9 @@ client:
 
 .PHONY: wasm
 wasm:
-	sed -i 's/ws:\/\/127.0.0.1:7715\//ws:\/\/$(SERVER_IP):$(SERVER_WS_PORT)\//g' ./cmd/wasm/main.go
+	sed -i 's/wss:\/\/127.0.0.1:7715\//wss:\/\/$(SERVER_DOMAIN):$(SERVER_WS_PORT)\//g' ./cmd/wasm/main.go
 	tinygo build -o ./website/chatroom/wasm/limcli.wasm -target wasm github.com/NanoRed/lim/cmd/wasm
-	sed -i 's/ws:\/\/$(SERVER_IP):$(SERVER_WS_PORT)\//ws:\/\/127.0.0.1:7715\//g' ./cmd/wasm/main.go
+	sed -i 's/wss:\/\/$(SERVER_DOMAIN):$(SERVER_WS_PORT)\//wss:\/\/127.0.0.1:7715\//g' ./cmd/wasm/main.go
 	
 .PHONY: website
 website: wasm

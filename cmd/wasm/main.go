@@ -2,8 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
-	"math/rand"
 	"net"
 	"sync"
 	"syscall/js"
@@ -14,7 +12,7 @@ import (
 )
 
 var (
-	addr string = "ws://127.0.0.1:7715/"
+	addr string = "wss://127.0.0.1:7715/"
 )
 
 func init() {
@@ -31,8 +29,6 @@ func init() {
 }
 
 func main() {
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	name := pokemonNames[r.Intn(55)]
 	client := internal.NewClient(
 		func() (net.Conn, error) {
 			once := &sync.Once{}
@@ -57,21 +53,12 @@ func main() {
 					}
 				}
 			}()
-			orderMutex := make(chan struct{}, 1)
-			orderMutex <- struct{}{}
-			fileReader := js.Global().Get("FileReader").New()
-			fileReader.Set("onload", js.FuncOf(func(this js.Value, args []js.Value) any {
-				arrayBuffer := fileReader.Get("result")
-				jsArray := js.Global().Get("Uint8Array").New(arrayBuffer)
-				bytes := make([]byte, jsArray.Length())
-				js.CopyBytesToGo(bytes, jsArray)
-				conn2.Write(bytes)
-				orderMutex <- struct{}{}
-				return nil
-			}))
+			sequencer := make(chan struct{}, 1)
+			sequencer <- struct{}{}
 			ws.Set("onmessage", js.FuncOf(func(this js.Value, args []js.Value) any {
-				<-orderMutex
-				fileReader.Call("readAsArrayBuffer", args[0].Get("data"))
+				<-sequencer
+				conn2.Write(jsBlobToGoBytes(args[0].Get("data")))
+				sequencer <- struct{}{}
 				return nil
 			}))
 			ws.Set("onerror", js.FuncOf(func(this js.Value, args []js.Value) any {
@@ -84,14 +71,18 @@ func main() {
 				return nil
 			}))
 			ws.Set("onopen", js.FuncOf(func(this js.Value, args []js.Value) any {
-				logger.Info("successfully connected to the websocket server")
 				ok <- struct{}{}
+				logger.Info("successfully connected to the websocket server")
 				return nil
 			}))
 			ws.Set("onclose", js.FuncOf(func(this js.Value, args []js.Value) any {
-				logger.Info("disconnected from websocket server")
 				conn1.Close()
 				conn2.Close()
+				logger.Info(
+					"disconnected from websocket server (code:%s reason:%s)",
+					jsStringToGoBytes(js.Global().Get("String").Invoke(args[0].Get("code"))),
+					jsStringToGoBytes(args[0].Get("reason")),
+				)
 				return nil
 			}))
 			js.Global().Set("onbeforeunload", js.FuncOf(func(this js.Value, args []js.Value) any {
@@ -109,73 +100,105 @@ func main() {
 	)
 	wg := &sync.WaitGroup{}
 	connected := make(chan struct{}, 1)
-	textEncoder := js.Global().Get("TextEncoder").New()
-	jsValueToGoBytes := func(val js.Value) []byte {
-		eocodedText := textEncoder.Call("encode", val)
-		textArray := js.Global().Get("Uint8Array").New(eocodedText)
-		textBytes := make([]byte, textArray.Length())
-		js.CopyBytesToGo(textBytes, textArray)
-		return textBytes
-	}
 	// func: lim_websocket_connect
 	js.Global().Set("lim_websocket_connect", js.FuncOf(func(this js.Value, args []js.Value) any {
 		wg.Add(1)
-		go func() {
-			if err := client.Connect(); err != nil {
-				logger.Error("connect failed: %v", err)
-			} else {
-				select {
-				case connected <- struct{}{}:
-				default:
-				}
+		if err := client.Connect(); err != nil {
+			logger.Error("connect failed: %v", err)
+		} else {
+			select {
+			case connected <- struct{}{}:
+			default:
 			}
-			wg.Done()
-		}()
+		}
+		wg.Done()
 		return nil
 	}))
 	// func: lim_websocket_label
 	js.Global().Set("lim_websocket_label", js.FuncOf(func(this js.Value, args []js.Value) any {
-		if len(args) > 0 {
-			go func() {
-				wg.Wait()
-				if err := client.Label(string(jsValueToGoBytes(args[0]))); err != nil {
-					logger.Error("label failed: %v", err)
-				}
-			}()
+		if len(args) > 0 && args[0].Type() == js.TypeString {
+			wg.Wait()
+			label := string(jsStringToGoBytes(args[0]))
+			if err := client.Label(label); err != nil {
+				logger.Error("label failed: %v", err)
+			} else {
+				logger.Info("label successfully: %s", label)
+			}
 			return nil
 		}
 		return js.Global().Get("Error").New("invalid arguments")
 	}))
 	// func: lim_websocket_dislabel
 	js.Global().Set("lim_websocket_dislabel", js.FuncOf(func(this js.Value, args []js.Value) any {
-		if len(args) > 0 {
-			go func() {
-				wg.Wait()
-				if err := client.Dislabel(string(jsValueToGoBytes(args[0]))); err != nil {
-					logger.Error("dislabel failed: %v", err)
-				}
-			}()
+		if len(args) > 0 && args[0].Type() == js.TypeString {
+			wg.Wait()
+			label := string(jsStringToGoBytes(args[0]))
+			if err := client.Dislabel(label); err != nil {
+				logger.Error("dislabel failed: %v", err)
+			} else {
+				logger.Info("label successfully: %s", label)
+			}
 			return nil
 		}
 		return js.Global().Get("Error").New("invalid arguments")
 	}))
 	// func: lim_websocket_multicast
+	type streamTool struct {
+		stream chan []byte
+		state  int
+		mu     *sync.Mutex
+	}
+	newStreamTool := &sync.Pool{New: func() any {
+		return &streamTool{
+			stream: make(chan []byte),
+			state:  0,
+			mu:     &sync.Mutex{},
+		}
+	}}
+	onceMap := &sync.Map{}
 	js.Global().Set("lim_websocket_multicast", js.FuncOf(func(this js.Value, args []js.Value) any {
-		if len(args) > 1 {
-			go func() {
+		if len(args) > 1 && args[0].Type() == js.TypeString {
+			label := string(jsStringToGoBytes(args[0]))
+			switch args[1].Type() {
+			case js.TypeString:
 				wg.Wait()
-				payload := &bytes.Buffer{}
-				payload.WriteByte('[')
-				payload.WriteString(time.Now().Format("15:04:05"))
-				payload.WriteByte(']')
-				payload.WriteString(name)
-				payload.Write([]byte{':', ' '})
-				payload.Write(jsValueToGoBytes(args[1]))
-				if err := client.Multicast(string(jsValueToGoBytes(args[0])), payload.Bytes()); err != nil {
+				if err := client.Multicast(label, jsStringToGoBytes(args[1])); err != nil {
 					logger.Error("multicast failed: %v", err)
 				}
-			}()
-			return nil
+				return nil
+			case js.TypeObject:
+				wg.Wait()
+				nst := newStreamTool.Get().(*streamTool)
+				st, ok := onceMap.LoadOrStore(label, nst)
+				streamTool := st.(*streamTool)
+				if ok {
+					newStreamTool.Put(nst)
+				} else {
+					go func() {
+						if err := client.Multicast(label, streamTool.stream); err != nil {
+							logger.Error("multicast failed: %v", err)
+						}
+					}()
+				}
+				streamTool.mu.Lock()
+				if streamTool.state != 0 {
+					streamTool.mu.Unlock()
+					return nil
+				}
+				element := args[1].Call("shift")
+				if element.Type() == js.TypeUndefined {
+					streamTool.state = -1
+					close(streamTool.stream)
+					onceMap.Delete(label)
+					streamTool.mu.Unlock()
+					return nil
+				}
+				payload := make([]byte, element.Length())
+				js.CopyBytesToGo(payload, element)
+				streamTool.stream <- payload
+				streamTool.mu.Unlock()
+				return nil
+			}
 		}
 		return js.Global().Get("Error").New("invalid arguments")
 	}))
@@ -183,9 +206,11 @@ func main() {
 	go func() {
 		for {
 			label, messages := client.Receive()
-			for _, message := range messages {
-				if fn := js.Global().Get("lim_websocket_onreceive"); fn.Type() == js.TypeFunction {
-					fn.Invoke(label, string(message))
+			if fn := js.Global().Get("lim_websocket_onreceive"); fn.Type() == js.TypeFunction {
+				for _, message := range messages {
+					jsArray := js.Global().Get("Uint8Array").New(len(message))
+					js.CopyBytesToJS(jsArray, message)
+					fn.Invoke(js.ValueOf(label), jsArray)
 				}
 			}
 		}
@@ -202,60 +227,34 @@ func main() {
 	select {}
 }
 
-var pokemonNames = [55]string{
-	"Pikachu",
-	"Bulbasaur",
-	"Charmander",
-	"Squirtle",
-	"Jigglypuff",
-	"Meowth",
-	"Psyduck",
-	"Growlithe",
-	"Poliwag",
-	"Abra",
-	"Machop",
-	"Tentacool",
-	"Geodude",
-	"Magnemite",
-	"Grimer",
-	"Shellder",
-	"Gastly",
-	"Onix",
-	"Drowzee",
-	"Krabby",
-	"Voltorb",
-	"Exeggcute",
-	"Cubone",
-	"Hitmonlee",
-	"Hitmonchan",
-	"Lickitung",
-	"Koffing",
-	"Rhyhorn",
-	"Chansey",
-	"Tangela",
-	"Kangaskhan",
-	"Horsea",
-	"Goldeen",
-	"Staryu",
-	"Scyther",
-	"Jynx",
-	"Electabuzz",
-	"Magmar",
-	"Pinsir",
-	"Tauros",
-	"Magikarp",
-	"Lapras",
-	"Ditto",
-	"Eevee",
-	"Porygon",
-	"Omanyte",
-	"Kabuto",
-	"Aerodactyl",
-	"Snorlax",
-	"Articuno",
-	"Zapdos",
-	"Moltres",
-	"Dratini",
-	"Dragonair",
-	"Dragonite",
-}
+var jsStringToGoBytes = func() func(val js.Value) []byte {
+	textEncoder := js.Global().Get("TextEncoder").New()
+	return func(val js.Value) []byte {
+		eocodedText := textEncoder.Call("encode", val)
+		textArray := js.Global().Get("Uint8Array").New(eocodedText)
+		textBytes := make([]byte, textArray.Length())
+		js.CopyBytesToGo(textBytes, textArray)
+		return textBytes
+	}
+}()
+
+var jsBlobToGoBytes = func() func(val js.Value) []byte {
+	result := make(chan []byte)
+	sequencer := make(chan struct{}, 1)
+	sequencer <- struct{}{}
+	fileReader := js.Global().Get("FileReader").New()
+	fileReader.Set("onload", js.FuncOf(func(this js.Value, args []js.Value) any {
+		arrayBuffer := args[0].Get("target").Get("result")
+		jsArray := js.Global().Get("Uint8Array").New(arrayBuffer)
+		bytes := make([]byte, jsArray.Length())
+		js.CopyBytesToGo(bytes, jsArray)
+		result <- bytes
+		sequencer <- struct{}{}
+		return nil
+	}))
+	return func(val js.Value) []byte {
+		<-sequencer
+		fileReader.Call("readAsArrayBuffer", val)
+		return <-result
+	}
+}()

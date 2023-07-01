@@ -3,8 +3,21 @@
 <head>
     <title>Chat Room</title>
     <script src="./js/wasm_exec.js"></script>
+    <script src="./js/pako.min.js"></script>
     <script>
-        var label = "sample"
+        const names = [
+            "Pikachu", "Bulbasaur", "Charmander", "Squirtle", "Jigglypuff", "Meowth", "Psyduck", "Growlithe",
+            "Poliwag", "Abra", "Machop", "Tentacool", "Geodude", "Magnemite", "Grimer", "Shellder", "Gastly",
+            "Onix", "Drowzee", "Krabby", "Voltorb", "Exeggcute", "Cubone", "Hitmonlee", "Hitmonchan", "Lickitung",
+            "Koffing", "Rhyhorn", "Chansey", "Tangela", "Kangaskhan", "Horsea", "Goldeen", "Staryu", "Scyther",
+            "Jynx", "Electabuzz", "Magmar", "Pinsir", "Tauros", "Magikarp", "Lapras", "Ditto", "Eevee", "Porygon",
+            "Omanyte", "Kabuto", "Aerodactyl", "Snorlax", "Articuno", "Zapdos", "Moltres", "Dratini", "Dragonair",
+            "Dragonite"
+        ];
+        var name = names[Math.floor(Math.random() * names.length)];
+
+        var textLabel = "sample";
+        var videoLabel;
 
         const go = new Go();
         WebAssembly.instantiateStreaming(fetch("./wasm/limcli.wasm"), go.importObject)
@@ -12,14 +25,17 @@
                 go.run(result.instance);
 
                 lim_websocket_connect();
-                lim_websocket_label(label);
-            })
-        
+                lim_websocket_label(textLabel);
+            });
+
         // When websocket successfully connected
         function lim_websocket_onload() {
             const input = document.getElementById('messageInput');
-            input.removeAttribute('placeholder')
-            input.removeAttribute('disabled')
+            input.removeAttribute('placeholder');
+            input.removeAttribute('disabled');
+            document.getElementById('startVideo').removeAttribute('disabled');
+            document.getElementById('shareDesktop').removeAttribute('disabled');
+            document.getElementById('messageSend').removeAttribute('disabled');
         }
 
         // Send a message via WebSocket
@@ -27,28 +43,94 @@
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
             if (message) {
-                lim_websocket_multicast(label, message);
+                lim_websocket_multicast(textLabel,  name + ': ' + message);
                 input.value = '';
             }
         }
 
         // Handle received messages
+        var textDecoder = new TextDecoder('utf-8');
         function lim_websocket_onreceive(label, message) {
-            const output = document.getElementById('messageOutput');
-            output.textContent += message + '\n';
-            output.scrollTop = output.scrollHeight
+            if (label == textLabel) {
+                const output = document.getElementById('messageOutput');
+                const messageElement = document.createElement('div');
+                messageElement.style = 'font-size:14px';
+                messageElement.innerHTML = '[' + (new Date()).toLocaleTimeString([], {hour12: false}) + ']' + textDecoder.decode(message);
+                output.appendChild(messageElement);
+                output.scrollTop = output.scrollHeight;
+            } else if (label == videoLabel) {
+                console.log('received', message.length);
+                // const width = message[1] | message[0] << 8;
+                // const canvasElement = document.getElementById("canvasElement");
+                // const canvasContext = canvasElement.getContext('2d');
+                // const imageData = new ImageData(new Uint8ClampedArray(message.subarray(2)), width);
+                // canvasElement.width = imageData.width;
+                // canvasElement.height = imageData.height;
+                // canvasContext.putImageData(imageData, 0, 0);
+            }
         }
 
     </script>
+    <style>
+        .container { 
+            display: flex; 
+        }
+
+        .video {
+            flex: 1;
+        }
+
+        .desktop {
+            flex: 1;
+        }
+
+        .chat {
+            flex: 1;
+        }
+
+        .video video,
+        .desktop video {
+            width: 100%;
+            height: auto;
+        }
+
+        .chat .messages {
+            width: 99%;
+            height: 500px;
+            overflow-y: auto;
+            border: 1px solid #000000;
+            margin-bottom: 10px;
+        }
+
+        .chat input {
+            width: 88%;
+        }
+
+        .chat button {
+            width: 10%;
+        }
+    </style>
 </head>
 <body>
-    <h1>Chat Room</h1>
-
-    <div id="chatBox">
-        <textarea id="messageOutput" rows="10" cols="50" readonly></textarea>
-        <br>
-        <input type="text" id="messageInput" style="width: 331px;" onkeydown="handleEnterKey(event)" placeholder="连接服务器中" disabled>
-        <button onclick="sendMessage()">Send</button>
+    <div class="container">
+        <div class="video">
+            <h2>Video</h2>
+            <button id="startVideo" disabled>Start</button>
+            <button id="stopVideo" disabled>Stop</button>
+            <br><canvas id="canvasElement"></canvas>
+        </div>
+        <div class="desktop">
+            <h2>Desktop</h2>
+            <button id="shareDesktop" disabled>Start</button>
+            <button id="unshareDesktop" disabled>Stop</button>
+            <video id="desktopElement" autoplay></video>
+        </div>
+        <div class="chat">
+            <h2>Chat</h2>
+            <div id="messageOutput" class="messages"></div>
+            <input type="text" id="messageInput" onkeydown="handleEnterKey(event)" placeholder="连接服务器中" disabled>
+            <button id="messageSend" onclick="sendMessage()" disabled>Send</button>
+        </div>
     </div>
 
     <script>
@@ -57,6 +139,129 @@
                 sendMessage();
             }
         }
+
+        function generateUUID() {
+            // Check if the crypto API is available
+            if (typeof crypto !== 'undefined' && crypto.getRandomValues && Uint32Array) {
+                const array = new Uint32Array(4);
+                crypto.getRandomValues(array);
+
+                return Array.from(array)
+                .map((number) => number.toString(16).padStart(8, '0'))
+                .join('-');
+            } else {
+                // Fallback for environments without crypto support
+                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+                const r = (Math.random() * 16) | 0;
+                const v = c === 'x' ? r : (r & 0x3) | 0x8;
+                return v.toString(16);
+                });
+            }
+        }
+
+        var startVideo = document.getElementById('startVideo');
+        var stopVideo = document.getElementById('stopVideo');
+        var videoStream;
+
+        startVideo.addEventListener('click', function() {
+            navigator.mediaDevices.getUserMedia({ video: true })
+            .then(function(stream) {
+                const videoLabel = textLabel + '-video-' + generateUUID()
+                var html = `
+                    <i><font color="grey">*turned on the camera*</font></i>&nbsp;
+                    <a onclick="(function(){
+                        if (videoLabel) {
+                            lim_websocket_dislabel(videoLabel);
+                        }
+                        videoLabel='` + videoLabel + `';
+                        lim_websocket_label(videoLabel);
+                    })()">
+                        <u><font color="blue" style="cursor: pointer">watch</font></u>
+                    </a>
+                `
+                lim_websocket_multicast(textLabel,  name + ': ' + html);
+
+                const canvasElement = document.createElement('canvas');
+                const canvasContext = canvasElement.getContext('2d');
+                const videoElement = document.createElement('video');
+
+                videoElement.setAttribute('autoplay', true);
+                videoElement.addEventListener('play', function() {
+                    canvasElement.width = videoElement.videoWidth;
+                    canvasElement.height = videoElement.videoHeight;
+                    const queue = [];
+                    function drawFrame() {
+                        if (videoStream) {
+                            canvasContext.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+                            const imageData = canvasContext.getImageData(0, 0, canvasElement.width, canvasElement.height);
+                            const combine = new Uint8Array(2+imageData.data.length);
+                            combine[0] = imageData.width>>8&255;
+                            combine[1] = imageData.width&255;
+                            for (let i = 0, j = 2; i < imageData.data.length; i++, j++) {
+                                combine[j] = imageData.data[i];
+                            }
+                            const compress = pako.deflate(combine);
+                            console.log('sending', compress.length)
+                            queue.push(compress);
+                            lim_websocket_multicast(videoLabel, queue);
+                            document.getElementById("canvasElement").getContext('2d').putImageData(imageData, 0, 0);
+                            requestAnimationFrame(drawFrame);
+                        } else {
+                            videoElement.srcObject = null;
+                            // const imageData = new ImageData(new Uint8ClampedArray(canvasElement.width*canvasElement.height*4), canvasElement.width);
+                            // queue.push(imageData);
+                            // lim_websocket_multicast(videoLabel, queue);
+                            lim_websocket_multicast(videoLabel, queue); // close
+                        }
+                    }
+                    drawFrame();
+                });
+                videoStream = stream;
+                videoElement.srcObject = videoStream;
+
+                startVideo.disabled = true;
+                stopVideo.disabled = false;
+            })
+            .catch(function (error) {
+                console.error('recording error', error);
+            });
+        });
+
+        stopVideo.addEventListener('click', function(){
+            if (videoStream) {
+                videoStream.getTracks().forEach(function(track) {
+                    track.stop();
+                });
+                videoStream = null;
+            }
+            startVideo.disabled = false;
+            stopVideo.disabled = true;
+        });
+
+        // shareDesktop.addEventListener('click', function() {
+        //     navigator.mediaDevices.getDisplayMedia({ video: true })
+        //     .then(function (stream) {
+        //         desktopStream = stream;
+        //         desktopElement.srcObject = desktopStream;
+        //         shareDesktop.disabled = true;
+        //         unshareDesktop.disabled = false;
+        //     })
+        //     .catch(function (error) {
+        //         console.error('desktop sharing error', error);
+        //     });
+        // });
+
+        // unshareDesktop.addEventListener('click', function(){
+        //     if (desktopStream) {
+        //         desktopStream.getTracks().forEach(function(track) {
+        //             track.stop();
+        //         });
+        //         desktopStream = null;
+        //         desktopElement.srcObject = null;
+        //     }
+        //     shareDesktop.disabled = false;
+        //     unshareDesktop.disabled = true;
+        // });
     </script>
 </body>
 </html>

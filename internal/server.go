@@ -19,16 +19,16 @@ func NewServer() *Server {
 	return &Server{}
 }
 
-func (s *Server) EnableWebsocket(addr string) {
+func (s *Server) EnableWebsocketTLS(addr string, certFile, keyFile string) {
 	go func() {
 		defer func() {
 			logger.Warn("restart websocket server in 1 seconds...")
 			time.Sleep(time.Second)
-			s.EnableWebsocket(addr)
+			s.EnableWebsocketTLS(addr, certFile, keyFile)
 		}()
 		if err := websocket.NewServer(func(c net.Conn) {
 			s.handle(&conn{Conn: c})
-		}).ListenAndServe(addr); err != nil {
+		}).ListenAndServeTLS(addr, certFile, keyFile); err != nil {
 			logger.Error("websocket server error: %v", err)
 		}
 	}()
@@ -84,7 +84,7 @@ func (s *Server) handle(conn *conn) {
 			// heartbeat
 		case protocol.ActMulticast:
 			if err := s.multicast(frame.Label, raw); err != nil {
-				logger.Error("failed to multicast data: %v %s %v", err, frame.Label, frame.Payload)
+				// logger.Error("failed to multicast data: %v %s", err, frame.Label)
 			}
 		case protocol.ActLabel:
 			if err := s.label(conn, frame.Label, frame.Payload); err != nil {
@@ -133,7 +133,7 @@ func (s *Server) multicast(label string, data []byte) (err error) {
 		for current := pool.Entry(); current != nil; current = current.Next() {
 			go func(conn *conn) {
 				if _, err := conn.Write(data); err != nil {
-					logger.Error("failed to write data: %s %v", label, err)
+					// logger.Error("failed to write data: %s %v", label, err)
 					_connlib.remove(conn)
 				}
 			}(current.Load().(*conn))

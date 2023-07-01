@@ -173,98 +173,111 @@ func (p *Packer) Assemble() (label string, data [][]byte) {
 	}
 }
 
-func (p *Packer) Pack(label string, data []byte) (frames []*Frame) {
-	if dlen := len(data); dlen < 4095 {
-		frame := NewFrame()
-		frame.Act = ActMulticast
-		frame.Label = label
-		frame.Payload = make([]byte, 1+dlen)
-		copy(frame.Payload[1:], data)
-		frames = []*Frame{frame}
-	} else {
-		var i uint16
-		now := uint64(time.Now().UnixNano())
-		rand := uint16(uintptr(unsafe.Pointer(&data)))
-		for ; dlen > 4082; dlen = dlen - 4082 {
-			s := i * 4082
-			e := s + 4082
-			frame := NewFrame()
-			frame.Act = ActMulticast
-			frame.Label = label
-			frame.Payload = make([]byte, 4095)
-			frame.Payload[0] = 0x03
-			binary.BigEndian.PutUint64(frame.Payload[1:], now)
-			binary.BigEndian.PutUint16(frame.Payload[9:], rand)
-			binary.BigEndian.PutUint16(frame.Payload[11:], i)
-			copy(frame.Payload[13:], data[s:e])
-			frames = append(frames, frame)
-			i++
-		}
-		frame := NewFrame()
-		frame.Act = ActMulticast
-		frame.Label = label
-		frame.Payload = make([]byte, 13+dlen)
-		frame.Payload[0] = 0x02
-		binary.BigEndian.PutUint64(frame.Payload[1:], now)
-		binary.BigEndian.PutUint16(frame.Payload[9:], rand)
-		binary.BigEndian.PutUint16(frame.Payload[11:], i)
-		copy(frame.Payload[13:], data[i*4082:])
-		frames = append(frames, frame)
-	}
-	return
-}
-
-func (p *Packer) PackStream(label string, data <-chan []byte) <-chan *Frame {
-	c := make(chan *Frame)
-	go func() {
-		var i uint16
-		for b := range data {
-			dlen := len(b)
-			if dlen == 0 {
-				continue
-			}
-			now := uint64(time.Now().UnixNano())
-			if dlen <= 4084 {
+func (p *Packer) Pack(label string, data any) <-chan *Frame {
+	switch data := data.(type) {
+	case []byte:
+		if dlen := len(data); dlen > 0 {
+			if dlen < 4095 {
 				frame := NewFrame()
 				frame.Act = ActMulticast
 				frame.Label = label
-				frame.Payload = make([]byte, 5+dlen)
-				frame.Payload[0] = 0x04
-				binary.BigEndian.PutUint16(frame.Payload[1:], i)
-				binary.BigEndian.PutUint64(frame.Payload[3:], now)
-				copy(frame.Payload[11:], b)
-				c <- frame
+				frame.Payload = make([]byte, 1+dlen)
+				copy(frame.Payload[1:], data)
+				frames := make(chan *Frame, 1)
+				frames <- frame
+				close(frames)
+				return frames
 			} else {
-				var j uint16
+				var i uint16
+				var s uint64
+				now := uint64(time.Now().UnixNano())
+				rand := uint16(uintptr(unsafe.Pointer(&data)))
+				frames := make(chan *Frame, dlen/4082+1)
 				for ; dlen > 4082; dlen = dlen - 4082 {
-					s := j * 4082
 					e := s + 4082
 					frame := NewFrame()
 					frame.Act = ActMulticast
 					frame.Label = label
 					frame.Payload = make([]byte, 4095)
-					frame.Payload[0] = 0x07
-					binary.BigEndian.PutUint16(frame.Payload[1:], i)
-					binary.BigEndian.PutUint16(frame.Payload[3:], j)
-					binary.BigEndian.PutUint64(frame.Payload[5:], now)
-					copy(frame.Payload[13:], b[s:e])
-					c <- frame
-					j++
+					frame.Payload[0] = 0x03
+					binary.BigEndian.PutUint64(frame.Payload[1:], now)
+					binary.BigEndian.PutUint16(frame.Payload[9:], rand)
+					binary.BigEndian.PutUint16(frame.Payload[11:], i)
+					copy(frame.Payload[13:], data[s:e])
+					frames <- frame
+					s = e
+					i++
 				}
 				frame := NewFrame()
 				frame.Act = ActMulticast
 				frame.Label = label
-				frame.Payload = make([]byte, 5+dlen)
-				frame.Payload[0] = 0x06
-				binary.BigEndian.PutUint16(frame.Payload[1:], i)
-				binary.BigEndian.PutUint16(frame.Payload[3:], j)
-				binary.BigEndian.PutUint64(frame.Payload[5:], now)
-				copy(frame.Payload[13:], b[j*4082:])
-				c <- frame
+				frame.Payload = make([]byte, 13+dlen)
+				frame.Payload[0] = 0x02
+				binary.BigEndian.PutUint64(frame.Payload[1:], now)
+				binary.BigEndian.PutUint16(frame.Payload[9:], rand)
+				binary.BigEndian.PutUint16(frame.Payload[11:], i)
+				copy(frame.Payload[13:], data[s:])
+				frames <- frame
+				close(frames)
+				return frames
 			}
-			i++
 		}
-		close(c)
-	}()
-	return c
+	case chan []byte:
+		frames := make(chan *Frame)
+		go func() {
+			var i uint16
+			for b := range data {
+				dlen := len(b)
+				if dlen == 0 {
+					continue
+				}
+				now := uint64(time.Now().UnixNano())
+				if dlen <= 4084 {
+					frame := NewFrame()
+					frame.Act = ActMulticast
+					frame.Label = label
+					frame.Payload = make([]byte, 11+dlen)
+					frame.Payload[0] = 0x04
+					binary.BigEndian.PutUint16(frame.Payload[1:], i)
+					binary.BigEndian.PutUint64(frame.Payload[3:], now)
+					copy(frame.Payload[11:], b)
+					frames <- frame
+				} else {
+					var j uint16
+					var s uint64
+					for ; dlen > 4082; dlen = dlen - 4082 {
+						e := s + 4082
+						frame := NewFrame()
+						frame.Act = ActMulticast
+						frame.Label = label
+						frame.Payload = make([]byte, 4095)
+						frame.Payload[0] = 0x07
+						binary.BigEndian.PutUint16(frame.Payload[1:], i)
+						binary.BigEndian.PutUint16(frame.Payload[3:], j)
+						binary.BigEndian.PutUint64(frame.Payload[5:], now)
+						copy(frame.Payload[13:], b[s:e])
+						frames <- frame
+						s = e
+						j++
+					}
+					frame := NewFrame()
+					frame.Act = ActMulticast
+					frame.Label = label
+					frame.Payload = make([]byte, 13+dlen)
+					frame.Payload[0] = 0x06
+					binary.BigEndian.PutUint16(frame.Payload[1:], i)
+					binary.BigEndian.PutUint16(frame.Payload[3:], j)
+					binary.BigEndian.PutUint64(frame.Payload[5:], now)
+					copy(frame.Payload[13:], b[s:])
+					frames <- frame
+				}
+				i++
+			}
+			close(frames)
+		}()
+		return frames
+	}
+	frames := make(chan *Frame)
+	close(frames)
+	return frames
 }

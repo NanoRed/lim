@@ -23,6 +23,7 @@ type Client struct {
 	state      int32
 	reqIn      chan any
 	reqOut     chan any
+	reqNum     uint32
 	arrive     *container.SyncQueue
 	dialer     func() (net.Conn, error)
 	pauseValve *sync.WaitGroup
@@ -140,16 +141,16 @@ func (c *Client) recvLoop(decoder *protocol.FrameDecoder, respSQ *container.Sync
 
 func (c *Client) sendLoop(encoder *protocol.FrameEncoder, respSQ *container.SyncQueue) {
 	times := c.pauseTimes
-	ticker := time.NewTicker(HeartbeatInterval)
 	heartbeatFrame := protocol.NewFrame()
 	heartbeatFrame.Act = protocol.ActResponse
-	defer ticker.Stop()
 	defer encoder.Close()
 	for {
 		select {
 		case <-c.close:
+			logger.Error("sendLoop closed")
 			return
 		case v := <-c.reqOut:
+			atomic.AddUint32(&c.reqNum, ^uint32(0))
 			switch val := v.(type) {
 			case *protocol.Frame:
 				if err := encoder.Encode(val); err != nil {
@@ -176,7 +177,7 @@ func (c *Client) sendLoop(encoder *protocol.FrameEncoder, respSQ *container.Sync
 				respSQ.Push(val)
 				reqFrame.Recycle()
 			}
-		case <-ticker.C:
+		case <-time.After(HeartbeatInterval):
 			if err := encoder.Encode(heartbeatFrame); err != nil {
 				c.pause(times)
 				logger.Error("failed to write data: %v", err)
@@ -260,6 +261,7 @@ func (c *Client) request(frame *protocol.Frame, waitResp bool) (err error) {
 		times := c.pauseTimes
 		carrier := make(chan any)
 		c.reqIn <- carrier
+		atomic.AddUint32(&c.reqNum, 1)
 		carrier <- frame
 		select {
 		case v := <-carrier:
@@ -279,6 +281,7 @@ func (c *Client) request(frame *protocol.Frame, waitResp bool) (err error) {
 		}
 	} else {
 		c.reqIn <- frame
+		atomic.AddUint32(&c.reqNum, 1)
 	}
 	return
 }
@@ -316,13 +319,11 @@ func (c *Client) Dislabel(label string) (err error) {
 	return
 }
 
-func (c *Client) Multicast(label string, data []byte) (err error) {
-	if len(data) == 0 {
-		return errors.New("invalid data")
-	} else if len(label) == 0 {
+func (c *Client) Multicast(label string, data any) (err error) {
+	if len(label) == 0 {
 		return errors.New("invalid label")
 	}
-	for _, frame := range c.packer.Pack(label, data) {
+	for frame := range c.packer.Pack(label, data) {
 		c.request(frame, false)
 	}
 	return
