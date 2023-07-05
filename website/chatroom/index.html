@@ -125,7 +125,17 @@
         async function pickup(hostLabel, offerString) {
 
             const peerConnection = new RTCPeerConnection({
-                iceServers: [ {urls: ['stun:stun1.1.google.com:19302', 'stun:stun2.1.google.com:19302']}]
+                iceServers: [ 
+                    {
+                        urls: ['stun:stun1.1.google.com:19302', 'stun:stun2.1.google.com:19302'],
+                    },
+                    {
+                        urls: 'turn:106.52.81.44:3478',
+                        username: 'red',
+                        credential: '123456',
+                        realm: 'red'
+                    }
+                ]
             });
 
             const remoteStream = new MediaStream();
@@ -164,7 +174,17 @@
 
             hostStream = await navigator.mediaDevices.getUserMedia({video: true, audio: true});
             peerConnection = new RTCPeerConnection({
-                iceServers: [ {urls: ['stun:stun1.1.google.com:19302', 'stun:stun2.1.google.com:19302']}]
+                iceServers: [ 
+                    {
+                        urls: ['stun:stun1.1.google.com:19302', 'stun:stun2.1.google.com:19302'],
+                    },
+                    {
+                        urls: 'turn:106.52.81.44:3478',
+                        username: 'red',
+                        credential: '123456',
+                        realm: 'red'
+                    }
+                ]
             });
             hostStream.getTracks().forEach((track) => {
                 peerConnection.addTrack(track, hostStream);

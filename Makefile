@@ -14,3 +14,9 @@ wasm:
 	sed -i 's/wss:\/\/127.0.0.1:7715\//wss:\/\/$(SERVER_DOMAIN):$(SERVER_WS_PORT)\//g' ./cmd/wasm/main.go
 	tinygo build -o ./website/chatroom/wasm/limcli.wasm -target wasm github.com/NanoRed/lim/cmd/wasm
 	sed -i 's/wss:\/\/$(SERVER_DOMAIN):$(SERVER_WS_PORT)\//wss:\/\/127.0.0.1:7715\//g' ./cmd/wasm/main.go
+
+.PHONY: turn
+turn:
+	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o limturn github.com/NanoRed/lim/cmd/turn
+	scp ./limturn red@$(SERVER_IP):~/limturn
+	rm -f ./limturn
