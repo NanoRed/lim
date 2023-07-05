@@ -19,6 +19,7 @@ func main() {
 	flag.Parse()
 
 	server := internal.NewServer()
-	server.EnableWebsocketTLS(fmt.Sprintf("%s:%s", *ip, *wssPort), *certFile, *keyFile)
+	server.EnableWSS(fmt.Sprintf("%s:%s", *ip, *wssPort), *certFile, *keyFile)
+	server.EnableWebsite(fmt.Sprintf("%s:443", *ip), *certFile, *keyFile)
 	server.ListenAndServe(fmt.Sprintf("%s:%s", *ip, *port))
 }

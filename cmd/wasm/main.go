@@ -91,6 +91,9 @@ func main() {
 					conn1.Close()
 					conn2.Close()
 				})
+				if fn := js.Global().Get("lim_websocket_onunload"); fn.Type() == js.TypeFunction {
+					fn.Invoke()
+				}
 				return nil
 			}))
 			<-ok

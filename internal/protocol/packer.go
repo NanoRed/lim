@@ -35,19 +35,19 @@ func NewPacker(readFrame func() *Frame) *Packer {
 }
 
 func (p *Packer) Assemble() (label string, data [][]byte) {
-	// 0x06 is it a stream frame
-	// 0x04 is it separated as pieces
+	// 0x04 is it a stream frame
+	// 0x02 is it separated as pieces
 	// 0x01 0 means it is the last piece, 1 means the other pieces
 	for {
 		frame := p.readFrame()
-		if frame.Payload[0]&0x06 > 0 {
+		if frame.Payload[0]&0x04 > 0 {
 			s, ok := p.streamBuf[frame.Label]
 			if !ok {
 				s = &stream{buf: make(map[uint16]*buffer)}
 				p.streamBuf[frame.Label] = s
 			}
 			i := binary.BigEndian.Uint16(frame.Payload[1:])
-			if frame.Payload[0]&0x04 > 0 {
+			if frame.Payload[0]&0x02 > 0 {
 				j := binary.BigEndian.Uint16(frame.Payload[3:])
 				t := binary.BigEndian.Uint64(frame.Payload[5:])
 				b, ok := s.buf[i]
@@ -133,7 +133,7 @@ func (p *Packer) Assemble() (label string, data [][]byte) {
 				s.cursor = min
 				goto NEXT
 			}
-		} else if frame.Payload[0]&0x04 > 0 {
+		} else if frame.Payload[0]&0x02 > 0 {
 			var key [10]byte
 			copy(key[:], frame.Payload[1:])
 			b, ok := p.blockBuf[key]

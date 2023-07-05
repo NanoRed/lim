@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"errors"
 	"net"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/NanoRed/lim/internal/protocol"
 	"github.com/NanoRed/lim/internal/websocket"
 	"github.com/NanoRed/lim/pkg/logger"
+	"github.com/NanoRed/lim/website"
 )
 
 type Server struct {
@@ -19,17 +21,31 @@ func NewServer() *Server {
 	return &Server{}
 }
 
-func (s *Server) EnableWebsocketTLS(addr string, certFile, keyFile string) {
+func (s *Server) EnableWSS(addr string, certFile, keyFile string) {
 	go func() {
 		defer func() {
 			logger.Warn("restart websocket server in 1 seconds...")
 			time.Sleep(time.Second)
-			s.EnableWebsocketTLS(addr, certFile, keyFile)
+			s.EnableWSS(addr, certFile, keyFile)
 		}()
 		if err := websocket.NewServer(func(c net.Conn) {
 			s.handle(&conn{Conn: c})
 		}).ListenAndServeTLS(addr, certFile, keyFile); err != nil {
 			logger.Error("websocket server error: %v", err)
+		}
+	}()
+}
+
+func (s *Server) EnableWebsite(addr string, certFile, keyFile string) {
+	go func() {
+		defer func() {
+			logger.Warn("restart website server in 1 seconds...")
+			time.Sleep(time.Second)
+			s.EnableWebsite(addr, certFile, keyFile)
+		}()
+		http.Handle("/", http.FileServer(http.FS(website.ChatRoomFS)))
+		if err := http.ListenAndServeTLS(addr, certFile, keyFile, nil); err != nil {
+			logger.Error("website server error: %v", err)
 		}
 	}()
 }
@@ -83,9 +99,7 @@ func (s *Server) handle(conn *conn) {
 		case protocol.ActResponse:
 			// heartbeat
 		case protocol.ActMulticast:
-			if err := s.multicast(frame.Label, raw); err != nil {
-				// logger.Error("failed to multicast data: %v %s", err, frame.Label)
-			}
+			s.multicast(frame.Label, raw)
 		case protocol.ActLabel:
 			if err := s.label(conn, frame.Label, frame.Payload); err != nil {
 				errMsg := "failed to (dis)label connection"
@@ -131,12 +145,7 @@ func (s *Server) multicast(label string, data []byte) (err error) {
 	}
 	go func() {
 		for current := pool.Entry(); current != nil; current = current.Next() {
-			go func(conn *conn) {
-				if _, err := conn.Write(data); err != nil {
-					// logger.Error("failed to write data: %s %v", label, err)
-					_connlib.remove(conn)
-				}
-			}(current.Load().(*conn))
+			current.Load().(*conn).Write(data)
 		}
 	}()
 	return

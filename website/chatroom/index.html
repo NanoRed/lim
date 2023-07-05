@@ -2,10 +2,10 @@
 <html>
 <head>
     <title>Chat Room</title>
+    <link rel="stylesheet" type="text/css" media="screen" href="./css/main.css">
     <script src="./js/wasm_exec.js"></script>
-    <script src="./js/pako.min.js"></script>
     <script>
-        const names = [
+       const randnames = [
             "Pikachu", "Bulbasaur", "Charmander", "Squirtle", "Jigglypuff", "Meowth", "Psyduck", "Growlithe",
             "Poliwag", "Abra", "Machop", "Tentacool", "Geodude", "Magnemite", "Grimer", "Shellder", "Gastly",
             "Onix", "Drowzee", "Krabby", "Voltorb", "Exeggcute", "Cubone", "Hitmonlee", "Hitmonchan", "Lickitung",
@@ -14,129 +14,92 @@
             "Omanyte", "Kabuto", "Aerodactyl", "Snorlax", "Articuno", "Zapdos", "Moltres", "Dratini", "Dragonair",
             "Dragonite"
         ];
-        var name = names[Math.floor(Math.random() * names.length)];
+        let username = randnames[Math.floor(Math.random() * randnames.length)];
 
-        var textLabel = "sample";
-        var videoLabel;
+        var commonLabel = "sample";
+        var hostLabel;
+
+        var peerConnection;
+        var hostStream;
 
         const go = new Go();
         WebAssembly.instantiateStreaming(fetch("./wasm/limcli.wasm"), go.importObject)
-            .then((result) => {
-                go.run(result.instance);
+        .then((result) => {
+            go.run(result.instance);
 
-                lim_websocket_connect();
-                lim_websocket_label(textLabel);
-            });
+            lim_websocket_connect();
+            lim_websocket_label(commonLabel);
+        });
 
         // When websocket successfully connected
         function lim_websocket_onload() {
+            lim_websocket_multicast(commonLabel,  `<i><font color="grey">*` + username + ` entered the room</font></i>`);
             const input = document.getElementById('messageInput');
             input.removeAttribute('placeholder');
             input.removeAttribute('disabled');
-            document.getElementById('startVideo').removeAttribute('disabled');
-            document.getElementById('shareDesktop').removeAttribute('disabled');
-            document.getElementById('messageSend').removeAttribute('disabled');
+            document.getElementById('startCamera').removeAttribute('disabled');
+            document.getElementById('startDesktop').removeAttribute('disabled');
+            document.getElementById('stopStream').removeAttribute('disabled');
+        }
+
+        function lim_websocket_onunload() {
+            lim_websocket_multicast(commonLabel,  `<i><font color="grey">*` + username + ` left the room</font></i>`);
         }
 
         // Send a message via WebSocket
-        function sendMessage() {
+        function sendTextMessage() {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
             if (message) {
-                lim_websocket_multicast(textLabel,  name + ': ' + message);
+                lim_websocket_multicast(commonLabel,  username + ': ' + message);
                 input.value = '';
             }
         }
 
-        // Handle received messages
+        
         var textDecoder = new TextDecoder('utf-8');
+        // Handle received messages
         function lim_websocket_onreceive(label, message) {
-            if (label == textLabel) {
+            if (label == commonLabel) {
                 const output = document.getElementById('messageOutput');
                 const messageElement = document.createElement('div');
                 messageElement.style = 'font-size:14px';
                 messageElement.innerHTML = '[' + (new Date()).toLocaleTimeString([], {hour12: false}) + ']' + textDecoder.decode(message);
                 output.appendChild(messageElement);
                 output.scrollTop = output.scrollHeight;
-            } else if (label == videoLabel) {
-                console.log('received', message.length);
-                // const width = message[1] | message[0] << 8;
-                // const canvasElement = document.getElementById("canvasElement");
-                // const canvasContext = canvasElement.getContext('2d');
-                // const imageData = new ImageData(new Uint8ClampedArray(message.subarray(2)), width);
-                // canvasElement.width = imageData.width;
-                // canvasElement.height = imageData.height;
-                // canvasContext.putImageData(imageData, 0, 0);
+            } else if (label == hostLabel) {
+                hostLabel = null;
+                lim_websocket_dislabel(label);
+                const answer = JSON.parse(atob(textDecoder.decode(message)));
+                if (!peerConnection.currentRemoteDescription) {
+                    peerConnection.setRemoteDescription(answer)
+                }
             }
         }
 
     </script>
-    <style>
-        .container { 
-            display: flex; 
-        }
-
-        .video {
-            flex: 1;
-        }
-
-        .desktop {
-            flex: 1;
-        }
-
-        .chat {
-            flex: 1;
-        }
-
-        .video video,
-        .desktop video {
-            width: 100%;
-            height: auto;
-        }
-
-        .chat .messages {
-            width: 99%;
-            height: 500px;
-            overflow-y: auto;
-            border: 1px solid #000000;
-            margin-bottom: 10px;
-        }
-
-        .chat input {
-            width: 88%;
-        }
-
-        .chat button {
-            width: 10%;
-        }
-    </style>
 </head>
 <body>
+    <button id="startCamera" disabled>Camera</button>
+    <button id="startDesktop" disabled>Desktop</button>
+    <button id="stopStream" disabled>Stop</button>
     <div class="container">
         <div class="video">
             <h2>Video</h2>
-            <button id="startVideo" disabled>Start</button>
-            <button id="stopVideo" disabled>Stop</button>
-            <br><canvas id="canvasElement"></canvas>
-        </div>
-        <div class="desktop">
-            <h2>Desktop</h2>
-            <button id="shareDesktop" disabled>Start</button>
-            <button id="unshareDesktop" disabled>Stop</button>
-            <video id="desktopElement" autoplay></video>
+            <video id="videoElement" autoplay></video>
         </div>
         <div class="chat">
             <h2>Chat</h2>
             <div id="messageOutput" class="messages"></div>
             <input type="text" id="messageInput" onkeydown="handleEnterKey(event)" placeholder="连接服务器中" disabled>
-            <button id="messageSend" onclick="sendMessage()" disabled>Send</button>
+            <button id="sendInput" onclick="sendTextMessage()" disabled>Send</button>
         </div>
     </div>
 
     <script>
         function handleEnterKey(event) {
             if (event.keyCode == 13) {
-                sendMessage();
+                sendTextMessage();
             }
         }
 
@@ -159,109 +122,123 @@
             }
         }
 
-        var startVideo = document.getElementById('startVideo');
-        var stopVideo = document.getElementById('stopVideo');
-        var videoStream;
+        async function pickup(hostLabel, offerString) {
 
-        startVideo.addEventListener('click', function() {
-            navigator.mediaDevices.getUserMedia({ video: true })
-            .then(function(stream) {
-                const videoLabel = textLabel + '-video-' + generateUUID()
-                var html = `
-                    <i><font color="grey">*turned on the camera*</font></i>&nbsp;
-                    <a onclick="(function(){
-                        if (videoLabel) {
-                            lim_websocket_dislabel(videoLabel);
-                        }
-                        videoLabel='` + videoLabel + `';
-                        lim_websocket_label(videoLabel);
-                    })()">
-                        <u><font color="blue" style="cursor: pointer">watch</font></u>
-                    </a>
-                `
-                lim_websocket_multicast(textLabel,  name + ': ' + html);
-
-                const canvasElement = document.createElement('canvas');
-                const canvasContext = canvasElement.getContext('2d');
-                const videoElement = document.createElement('video');
-
-                videoElement.setAttribute('autoplay', true);
-                videoElement.addEventListener('play', function() {
-                    canvasElement.width = videoElement.videoWidth;
-                    canvasElement.height = videoElement.videoHeight;
-                    const queue = [];
-                    function drawFrame() {
-                        if (videoStream) {
-                            canvasContext.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
-                            const imageData = canvasContext.getImageData(0, 0, canvasElement.width, canvasElement.height);
-                            const combine = new Uint8Array(2+imageData.data.length);
-                            combine[0] = imageData.width>>8&255;
-                            combine[1] = imageData.width&255;
-                            for (let i = 0, j = 2; i < imageData.data.length; i++, j++) {
-                                combine[j] = imageData.data[i];
-                            }
-                            const compress = pako.deflate(combine);
-                            console.log('sending', compress.length)
-                            queue.push(compress);
-                            lim_websocket_multicast(videoLabel, queue);
-                            document.getElementById("canvasElement").getContext('2d').putImageData(imageData, 0, 0);
-                            requestAnimationFrame(drawFrame);
-                        } else {
-                            videoElement.srcObject = null;
-                            // const imageData = new ImageData(new Uint8ClampedArray(canvasElement.width*canvasElement.height*4), canvasElement.width);
-                            // queue.push(imageData);
-                            // lim_websocket_multicast(videoLabel, queue);
-                            lim_websocket_multicast(videoLabel, queue); // close
-                        }
-                    }
-                    drawFrame();
-                });
-                videoStream = stream;
-                videoElement.srcObject = videoStream;
-
-                startVideo.disabled = true;
-                stopVideo.disabled = false;
-            })
-            .catch(function (error) {
-                console.error('recording error', error);
+            const peerConnection = new RTCPeerConnection({
+                iceServers: [ {urls: ['stun:stun1.1.google.com:19302', 'stun:stun2.1.google.com:19302']}]
             });
+
+            const remoteStream = new MediaStream();
+            document.getElementById('videoElement').srcObject = remoteStream;
+
+            peerConnection.ontrack = async (event) => {
+                event.streams[0].getTracks().forEach((track) => {
+                    remoteStream.addTrack(track);
+                });
+            };
+
+            peerConnection.onicecandidate = async (event) => {
+                if (event.candidate) {
+                    lim_websocket_multicast(hostLabel, btoa(JSON.stringify(peerConnection.localDescription)));
+                }
+            };
+
+            const offer = JSON.parse(atob(offerString));
+            await peerConnection.setRemoteDescription(offer);
+
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+        }
+
+        var startCamera = document.getElementById('startCamera');
+        var startDesktop = document.getElementById('startDesktop');
+        var stopStream = document.getElementById('stopStream');
+
+        startCamera.addEventListener('click', async function() {
+
+            startCamera.disabled = true;
+            startDesktop.disabled = true;
+
+            hostLabel = commonLabel + generateUUID();
+            lim_websocket_label(hostLabel);
+
+            hostStream = await navigator.mediaDevices.getUserMedia({video: true, audio: true});
+            peerConnection = new RTCPeerConnection({
+                iceServers: [ {urls: ['stun:stun1.1.google.com:19302', 'stun:stun2.1.google.com:19302']}]
+            });
+            hostStream.getTracks().forEach((track) => {
+                peerConnection.addTrack(track, hostStream);
+            });
+            let timeoutID;
+            peerConnection.onicecandidate = async (event) => {
+                if (event.candidate) {
+                    if (timeoutID) {
+                        clearTimeout(timeoutID);
+                    }
+                    timeoutID = setTimeout(lim_websocket_multicast, 300, commonLabel, `
+                        <i><font color="grey">*` + username + ` is ringing the bell*</font></i>&nbsp;
+                        <span onclick="(function(e){e.innerHTML='[picked up]';})(this)">
+                            <font color="blue" style="cursor: pointer" onclick="pickup('`+hostLabel+`','`+btoa(JSON.stringify(peerConnection.localDescription))+`')">
+                                <u>[pick up]</u>
+                            </font>
+                        </span>
+                    `);
+                }
+            };
+            let offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            stopStream.disabled = false;
         });
 
-        stopVideo.addEventListener('click', function(){
-            if (videoStream) {
-                videoStream.getTracks().forEach(function(track) {
+        startDesktop.addEventListener('click', async function() {
+
+            startCamera.disabled = true;
+            startDesktop.disabled = true;
+
+            hostLabel = commonLabel + generateUUID();
+            lim_websocket_label(hostLabel);
+
+            hostStream = await navigator.mediaDevices.getDisplayMedia({video: true, audio: true});
+            peerConnection = new RTCPeerConnection({
+                iceServers: [ {urls: ['stun:stun1.1.google.com:19302', 'stun:stun2.1.google.com:19302']}]
+            });
+            hostStream.getTracks().forEach((track) => {
+                peerConnection.addTrack(track, hostStream);
+            });
+            let timeoutID;
+            peerConnection.onicecandidate = async (event) => {
+                if (event.candidate) {
+                    if (timeoutID) {
+                        clearTimeout(timeoutID);
+                    }
+                    timeoutID = setTimeout(lim_websocket_multicast, 300, commonLabel, `
+                        <i><font color="grey">*` + username + ` is ringing the bell*</font></i>&nbsp;
+                        <span onclick="(function(e){e.innerHTML='[picked up]';})(this)">
+                            <font color="blue" style="cursor: pointer" onclick="pickup('`+hostLabel+`','`+btoa(JSON.stringify(peerConnection.localDescription))+`')">
+                                <u>[pick up]</u>
+                            </font>
+                        </span>
+                    `);
+                }
+            };
+            let offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            stopStream.disabled = false;
+        });
+
+        stopStream.addEventListener('click', function(){
+            if (hostStream) {
+                hostStream.getTracks().forEach((track) => {
                     track.stop();
                 });
-                videoStream = null;
             }
-            startVideo.disabled = false;
-            stopVideo.disabled = true;
+            startCamera.disabled = false;
+            startDesktop.disabled = false;
+            stopStream.disabled = true;
         });
 
-        // shareDesktop.addEventListener('click', function() {
-        //     navigator.mediaDevices.getDisplayMedia({ video: true })
-        //     .then(function (stream) {
-        //         desktopStream = stream;
-        //         desktopElement.srcObject = desktopStream;
-        //         shareDesktop.disabled = true;
-        //         unshareDesktop.disabled = false;
-        //     })
-        //     .catch(function (error) {
-        //         console.error('desktop sharing error', error);
-        //     });
-        // });
-
-        // unshareDesktop.addEventListener('click', function(){
-        //     if (desktopStream) {
-        //         desktopStream.getTracks().forEach(function(track) {
-        //             track.stop();
-        //         });
-        //         desktopStream = null;
-        //         desktopElement.srcObject = null;
-        //     }
-        //     shareDesktop.disabled = false;
-        //     unshareDesktop.disabled = true;
-        // });
     </script>
 </body>
 </html>
