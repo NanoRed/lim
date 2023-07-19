@@ -37,6 +37,7 @@
             const input = document.getElementById('messageInput');
             input.removeAttribute('placeholder');
             input.removeAttribute('disabled');
+            document.getElementById('sendInput').removeAttribute('disabled');
             document.getElementById('startCamera').removeAttribute('disabled');
             document.getElementById('startDesktop').removeAttribute('disabled');
             document.getElementById('stopStream').removeAttribute('disabled');
@@ -96,6 +97,10 @@
         </div>
     </div>
 
+    <p style="position: absolute; bottom: 0; left: 50%; transform: translate(-50%, 0);">
+        <a href="https://beian.miit.gov.cn/" target="_blank">粤ICP备2023063728号-1</a>
+    </p>
+
     <script>
         function handleEnterKey(event) {
             if (event.keyCode == 13) {
@@ -132,8 +137,7 @@
                     {
                         urls: 'turn:106.52.81.44:3478',
                         username: 'red',
-                        credential: '123456',
-                        realm: 'red'
+                        credential: '123456'
                     }
                 ]
             });
@@ -181,8 +185,7 @@
                     {
                         urls: 'turn:106.52.81.44:3478',
                         username: 'red',
-                        credential: '123456',
-                        realm: 'red'
+                        credential: '123456'
                     }
                 ]
             });
